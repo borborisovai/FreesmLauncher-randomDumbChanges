@@ -13,6 +13,7 @@ class ShaderPackFolderModel : public ResourceFolderModel {
     {}
 
     virtual QString id() const override { return "shaderpacks"; }
+    int listViewImageColumn() const override { return -1; }
 
     [[nodiscard]] Resource* createResource(const QFileInfo& info) override { return new ShaderPack(info); }
 

@@ -1202,6 +1202,8 @@ SET(LAUNCHER_SOURCES
     ui/widgets/ModFilterWidget.h
     ui/widgets/ModListView.cpp
     ui/widgets/ModListView.h
+    ui/widgets/ResourceIconDelegate.cpp
+    ui/widgets/ResourceIconDelegate.h
     ui/widgets/PageContainer.cpp
     ui/widgets/PageContainer.h
     ui/widgets/PageContainer_p.h

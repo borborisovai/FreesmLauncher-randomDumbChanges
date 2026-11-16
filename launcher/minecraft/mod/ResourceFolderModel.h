@@ -168,6 +168,12 @@ class ResourceFolderModel : public QAbstractListModel {
      *
      *  The actual comparisons and filtering are done directly by the Resource, so to modify behavior go there instead!
      */
+    /** Column index of the embedded resource image, or -1 if the model does not have one.
+     *  Used by the icon grid view of the external resources pages. */
+    virtual int listViewImageColumn() const { return -1; }
+    /** Column index of the resource name. Used by the icon grid view of the external resources pages. */
+    virtual int listViewNameColumn() const { return NameColumn; }
+
     QSortFilterProxyModel* createFilterProxyModel(QObject* parent = nullptr);
 
     SortType columnToSortKey(size_t column) const;
