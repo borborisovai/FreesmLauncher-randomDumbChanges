@@ -63,6 +63,7 @@ in
         [
           cmark
           ghc_filesystem
+          kdePackages.ktexteditor
           kdePackages.qtbase
           kdePackages.qtnetworkauth
           kdePackages.quazip

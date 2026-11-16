@@ -1463,6 +1463,7 @@ target_link_libraries(Launcher_logic
 )
 target_link_libraries(Launcher_logic
     cmark::cmark
+    KF6::TextEditor
     LocalPeer
     Launcher_rainbow
 )

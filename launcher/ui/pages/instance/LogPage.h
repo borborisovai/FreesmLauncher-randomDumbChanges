@@ -53,7 +53,6 @@ class LogFormatProxyModel : public QIdentityProxyModel {
     QVariant data(const QModelIndex& index, int role) const override;
     QFont getFont() const { return m_font; }
     void setFont(QFont font) { m_font = font; }
-    QModelIndex find(const QModelIndex& start, const QString& value, bool reverse) const;
 
    private:
     QFont m_font;
