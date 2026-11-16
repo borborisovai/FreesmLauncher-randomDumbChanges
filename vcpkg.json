@@ -27,8 +27,7 @@
     "tomlplusplus",
     "zlib",
     {
-      "name": "gettext",
-      "platform": "windows | osx"
+      "name": "gettext"
     }
   ]
 }

@@ -67,7 +67,9 @@ runs:
           macOS-*)       TRIPLET=universal-osx ;;
           *) echo "::error::unsupported runner ${{ runner.os }}-${{ runner.arch }}" >&2; exit 1 ;;
         esac
-        VCPKG_EXE="${VCPKG_ROOT:-$VCPKG_INSTALLATION_ROOT}/vcpkg.exe"
+        VCPKG_ROOT_DIR="${VCPKG_ROOT:-$VCPKG_INSTALLATION_ROOT}"
+        if [ "${{ runner.os }}" = "Windows" ]; then VCPKG_EXE="$VCPKG_ROOT_DIR/vcpkg.exe"; else VCPKG_EXE="$VCPKG_ROOT_DIR/vcpkg"; fi
+        "$VCPKG_EXE" version
         "$VCPKG_EXE" install --triplet="$TRIPLET" --x-manifest-root="$GITHUB_WORKSPACE"
 
     - name: Build and install KF6 from source
