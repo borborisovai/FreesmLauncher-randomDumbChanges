@@ -26,6 +26,11 @@ Based on Prism Launcher **11.1.1**
 
 </div>
 
+> [!WARNING]
+> **This repository is an unstable fork created with the help of a neural network (AI).** It may contain bugs, broken builds, and unexpected behavior. Use at your own risk.
+>
+> **We recommend using the original repository instead: [freesmteam/FreesmLauncher](https://github.com/freesmteam/FreesmLauncher)**
+
 ## Screenshots
 
 <details>
