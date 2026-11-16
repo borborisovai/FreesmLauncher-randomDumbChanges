@@ -60,6 +60,8 @@ fi
 if [ -n "$EXTRA_PREFIX" ]; then
   echo "Extra prefix: $EXTRA_PREFIX"
 fi
+# Normalize Windows path separators for plain bash file tests
+EXTRA_PREFIX_UNIX="${EXTRA_PREFIX//\\//}"
 
 # Generator: Ninja everywhere except Windows, where Visual Studio is always
 # present in the runner images.
@@ -80,10 +82,11 @@ fi
 
 MSGFMT=""
 MSGMERGE=""
-if [ "$RUNNER_OS" = "Windows" ] && [ -n "$EXTRA_PREFIX" ] && [ -d "$EXTRA_PREFIX/tools/gettext/bin" ]; then
+if [ "$RUNNER_OS" = "Windows" ] && [ -n "$EXTRA_PREFIX_UNIX" ] && [ -d "$EXTRA_PREFIX_UNIX/tools/gettext/bin" ]; then
   # vcpkg installs the gettext tools outside the normal bin/ layout
-  [ -x "$EXTRA_PREFIX/tools/gettext/bin/msgfmt.exe" ]   && MSGFMT="$EXTRA_PREFIX/tools/gettext/bin/msgfmt.exe"
-  [ -x "$EXTRA_PREFIX/tools/gettext/bin/msgmerge.exe" ] && MSGMERGE="$EXTRA_PREFIX/tools/gettext/bin/msgmerge.exe"
+  [ -x "$EXTRA_PREFIX_UNIX/tools/gettext/bin/msgfmt.exe" ]   && MSGFMT="$EXTRA_PREFIX_UNIX/tools/gettext/bin/msgfmt.exe"
+  [ -x "$EXTRA_PREFIX_UNIX/tools/gettext/bin/msgmerge.exe" ] && MSGMERGE="$EXTRA_PREFIX_UNIX/tools/gettext/bin/msgmerge.exe"
+  export PATH="$EXTRA_PREFIX_UNIX/tools/gettext/bin:$PATH"
 fi
 if [ "$RUNNER_OS" = "Darwin" ] && [ -n "$EXTRA_PREFIX" ]; then
   MSGFMT="$EXTRA_PREFIX/bin/msgfmt"

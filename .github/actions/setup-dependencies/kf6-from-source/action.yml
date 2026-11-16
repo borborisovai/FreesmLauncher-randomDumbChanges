@@ -53,7 +53,7 @@ runs:
             # libudev (KSolid), libmount (KIO) and libcanberra (KNotifications)
             # are required from the system.
             sudo apt-get -y update
-            sudo apt-get -y install flex bison libudev-dev libmount-dev libcanberra-dev gettext
+            sudo apt-get -y install flex bison libudev-dev libmount-dev libcanberra-dev gettext libxcb-keysyms1-dev libxcb-res-dev libxcb-icccm4-dev
             ;;
         esac
 
