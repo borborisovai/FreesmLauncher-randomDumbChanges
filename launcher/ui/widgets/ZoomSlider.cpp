@@ -144,7 +144,7 @@ ZoomToolbarActions createZoomToolbarActions(QObject* parent)
     actions.zoomOut->setToolTip(QCoreApplication::translate("ZoomStatusSlider", "Make the icons smaller"));
 
     actions.zoomReset = new QAction(QCoreApplication::translate("ZoomStatusSlider", "Reset Zoom"), parent);
-    actions.zoomReset->setShortcut(QKeySequence::ZoomReset);
+    actions.zoomReset->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_0));
     actions.zoomReset->setShortcutContext(Qt::WindowShortcut);
     actions.zoomReset->setToolTip(QCoreApplication::translate("ZoomStatusSlider", "Reset the icon size to its default"));
 

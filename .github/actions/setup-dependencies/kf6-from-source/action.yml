@@ -1,0 +1,88 @@
+name: Install KF6 from source
+description: >
+  Build the KF6 frameworks required to link Freesm Launcher from source and
+  install them into a cached prefix. Used on platforms without prebuilt
+  KF6 packages (macOS, Windows MSVC, Linux aarch64).
+
+inputs:
+  kf6-version:
+    description: KF6 release to build
+    required: false
+    default: '6.32.0'
+  qt-version:
+    description: Qt version in use (cache key only)
+    required: false
+    default: ''
+
+outputs:
+  kf6-prefix:
+    description: Installation prefix of the built KF6 frameworks
+    value: ${{ steps.prefix.outputs.path }}
+
+runs:
+  using: composite
+
+  steps:
+    - name: Decide prefix location
+      id: prefix
+      shell: bash
+      run: echo "path=${{ runner.temp }}/kf6-prefix" >> "$GITHUB_OUTPUT"
+
+    - name: Restore KF6 build cache
+      id: cache
+      uses: actions/cache@v5.0.4
+      with:
+        path: ${{ runner.temp }}/kf6-prefix
+        key: kf6-${{ runner.os }}-${{ runner.arch }}-${{ inputs.kf6-version }}-qt${{ inputs.qt-version }}-${{ hashFiles('.github/actions/setup-dependencies/kf6-from-source/build-kf6.sh', '.github/actions/setup-dependencies/kf6-from-source/action.yml') }}
+
+    - name: Install platform tools
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        case "${{ runner.os }}" in
+          Windows)
+            # gettext provides libintl for KF6I18n; it is installed by vcpkg from our vcpkg.json
+            echo "Windows: relying on preinstalled vcpkg for gettext"
+            ;;
+          macOS)
+            brew list flex >/dev/null 2>&1 || brew install flex
+            brew list bison >/dev/null 2>&1 || brew install bison
+            ;;
+          Linux)
+            # extra-cmake-modules and Qt come from aqtinstall/vcpkg; flex/bison,
+            # libudev (KSolid), libmount (KIO) and libcanberra (KNotifications)
+            # are required from the system.
+            sudo apt-get -y update
+            sudo apt-get -y install flex bison libudev-dev libmount-dev libcanberra-dev gettext libxcb-keysyms1-dev libxcb-res0-dev libxcb-icccm4-dev
+            ;;
+        esac
+
+    - name: Install gettext via vcpkg (Windows)
+      if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'Windows'
+      shell: bash
+      run: |
+        case "${{ runner.os }}-${{ runner.arch }}" in
+          Windows-X64)   TRIPLET=x64-windows ;;
+          Windows-ARM64) TRIPLET=arm64-windows ;;
+          macOS-*)       TRIPLET=universal-osx ;;
+          *) echo "::error::unsupported runner ${{ runner.os }}-${{ runner.arch }}" >&2; exit 1 ;;
+        esac
+        VCPKG_ROOT_DIR="${VCPKG_ROOT:-$VCPKG_INSTALLATION_ROOT}"
+        if [ "${{ runner.os }}" = "Windows" ]; then VCPKG_EXE="$VCPKG_ROOT_DIR/vcpkg.exe"; else VCPKG_EXE="$VCPKG_ROOT_DIR/vcpkg"; fi
+        "$VCPKG_EXE" version
+        "$VCPKG_EXE" install --triplet="$TRIPLET" --x-manifest-root="$GITHUB_WORKSPACE"
+
+    - name: Build and install KF6 from source
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        bash "$GITHUB_WORKSPACE/.github/actions/setup-dependencies/kf6-from-source/build-kf6.sh" \
+          "${{ steps.prefix.outputs.path }}" "${{ inputs.kf6-version }}"
+
+    - name: Export prefix for later steps
+      shell: bash
+      run: |
+        {
+          echo "CMAKE_PREFIX_PATH=${{ steps.prefix.outputs.path }};${CMAKE_PREFIX_PATH:-}"
+          echo "KF6_INSTALL_PREFIX=${{ steps.prefix.outputs.path }}"
+        } >> "$GITHUB_ENV"

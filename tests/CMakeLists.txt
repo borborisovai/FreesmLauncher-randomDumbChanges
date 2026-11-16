@@ -69,3 +69,6 @@ ecm_add_test(ConfigMigration_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSI
 
 ecm_add_test(PNGUtils_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSION_MAJOR}::Test
     TEST_NAME PNGUtils)
+ecm_add_test(LogView_test.cpp LINK_LIBRARIES Launcher_logic KF6::TextEditor Qt${QT_VERSION_MAJOR}::Test
+    TEST_NAME LogView)
+set_tests_properties(LogView PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

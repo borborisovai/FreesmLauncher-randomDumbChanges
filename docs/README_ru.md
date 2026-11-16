@@ -128,6 +128,14 @@ Freesm Launcher использует переводы Prism Launcher'а на д�
 
 Если вы хотите собрать Freesm Launcher самостоятельно, следуйте [инструкциям сборки Prism Launcher](https://prismlauncher.org/wiki/development/build-instructions/) (Freesm использует систему сборки Garnix).
 
+Примечание: просмотр логов реализован с помощью KDE KTextEditor (текстовый компонент, на котором построен KWrite), поэтому для сборки теперь требуется KDE Frameworks 6 с компонентом KTextEditor:
+
+- Debian/Ubuntu: `libkf6texteditor-dev` (обратите внимание: этот пакет есть только в Ubuntu 25.04 / Debian trixie и новее; в более старых выпусках, например Ubuntu 24.04, есть только KDE Frameworks 5.x, и собрать просмотр логов там нельзя)
+- Windows (MSYS2): `mingw-w64-<env>-ktexteditor` (например, `pacboy ktexteditor:p`)
+- Nix: `kdePackages.ktexteditor`
+
+Готовых пакетов KTextEditor пока нет для macOS и для Windows MSVC (vcpkg), поэтому сборки на этих платформах будут завершаться ошибкой на этапе CMake, пока для них не появится упаковка.
+
 ## Прочее
 
 <ul>

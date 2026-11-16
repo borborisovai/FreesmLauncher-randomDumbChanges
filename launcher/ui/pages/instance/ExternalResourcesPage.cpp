@@ -165,7 +165,7 @@ ExternalResourcesPage::ExternalResourcesPage(BaseInstance* instance, ResourceFol
 
     auto* zoomSlider = new ZoomStatusSlider(this);
     m_zoomSlider = zoomSlider;
-    connect(zoomSlider, &ZoomStatusSlider::zoomLevelChanged, this, &ExternalResourcesPage::setZoomLevel);
+    connect(zoomSlider, &ZoomStatusSlider::zoomLevelChanged, this, [this](int level) { setZoomLevel(level); });
     setStatusBar(new QStatusBar(this));
     statusBar()->addPermanentWidget(zoomSlider);
 
