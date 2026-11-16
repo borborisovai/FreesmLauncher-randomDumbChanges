@@ -59,6 +59,7 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QInputDialog>
+#include <QItemSelectionModel>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QMainWindow>
@@ -67,6 +68,7 @@
 #include <QMessageBox>
 #include <QProgressDialog>
 #include <QShortcut>
+#include <QStackedWidget>
 #include <QStatusBar>
 #include <QToolBar>
 #include <QToolButton>
@@ -107,7 +109,11 @@
 #include "ui/dialogs/ProgressDialog.h"
 #include "ui/instanceview/InstanceDelegate.h"
 #include "ui/instanceview/InstanceProxyModel.h"
+#include "ui/instanceview/InstanceDetailsDelegate.h"
+#include "ui/instanceview/InstanceDetailsModel.h"
+#include "ui/instanceview/InstanceDetailsView.h"
 #include "ui/instanceview/InstanceView.h"
+#include "ui/instanceview/InstanceViewMode.h"
 #include "ui/themes/ITheme.h"
 #include "ui/themes/ThemeManager.h"
 #include "ui/widgets/LabeledToolButton.h"
@@ -289,9 +295,12 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         updateNewsLabel();
     }
 
-    // Create the instance list widget
+    // Create the instance list widget. The grid view and the details (table) view
+    // are stacked on top of each other; the visible one is picked by the view mode
+    // (modeled after Dolphin's view mode switching).
+    viewStack = new QStackedWidget(ui->centralWidget);
     {
-        view = new InstanceView(ui->centralWidget);
+        view = new InstanceView(viewStack);
 
         view->setSelectionMode(QAbstractItemView::SingleSelection);
         // FIXME: leaks ListViewDelegate
@@ -331,7 +340,91 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         view->setSourceOfGroupCollapseStatus(
             [](const QString& groupName) -> bool { return APPLICATION->instances()->isGroupCollapsed(groupName); });
         connect(view, &InstanceView::groupStateChanged, APPLICATION->instances(), &InstanceList::on_GroupStateChanged);
-        ui->horizontalLayout->addWidget(view);
+    }
+    // Create the details (table) view
+    {
+        detailsView = new InstanceDetailsView(viewStack);
+
+        auto* detailsDelegate = new InstanceDetailsDelegate(this);
+        detailsView->setItemDelegate(detailsDelegate);
+        // same rename flow as in the grid view: offer to also rename the instance folder
+        connect(detailsDelegate, &InstanceDetailsDelegate::textChanged, this, [this](QString before, QString after) {
+            if (auto newRoot = askToUpdateInstanceDirName(m_selectedInstance, before, after, this); !newRoot.isEmpty()) {
+                auto oldID = m_selectedInstance->id();
+                auto newID = QFileInfo(newRoot).fileName();
+                QString origGroup(APPLICATION->instances()->getInstanceGroup(oldID));
+                bool syncGroup = origGroup != GroupId() && oldID != newID;
+                if (syncGroup)
+                    APPLICATION->instances()->setInstanceGroup(oldID, GroupId());
+
+                refreshInstances();
+                setSelectedInstanceById(newID);
+
+                if (syncGroup)
+                    APPLICATION->instances()->setInstanceGroup(newID, origGroup);
+            }
+        });
+
+        detailsView->setContextMenuPolicy(Qt::CustomContextMenu);
+        connect(detailsView, &QWidget::customContextMenuRequested, this, &MainWindow::showInstanceContextMenu);
+        connect(detailsView, &InstanceDetailsView::droppedURLs, this, &MainWindow::processURLs, Qt::QueuedConnection);
+
+        detailsProxyModel = new InstanceDetailsModel(this);
+        detailsProxyModel->setSourceModel(APPLICATION->instances());
+        detailsProxyModel->sort(InstanceDetailsModel::ColumnName, Qt::AscendingOrder);
+        connect(detailsProxyModel, &InstanceDetailsModel::dataChanged, this, &MainWindow::instanceDataChanged);
+
+        detailsView->setModel(detailsProxyModel);
+
+        detailsView->installEventFilter(this);
+        connect(detailsView, &InstanceDetailsView::activated, this, &MainWindow::instanceActivated);
+        connect(detailsView->selectionModel(), &QItemSelectionModel::currentChanged, this, &MainWindow::instanceChanged);
+    }
+    viewStack->addWidget(view);
+    viewStack->addWidget(detailsView);
+    ui->horizontalLayout->addWidget(viewStack);
+
+    // View mode actions and the toolbar button (modeled after Dolphin's view_mode action).
+    // The mode is persisted globally in the InstViewMode setting (like Dolphin's global
+    // view properties); there is no per-instance override, just like global Dolphin settings.
+    {
+        m_actionIconsViewMode = new QAction(QIcon::fromTheme(QStringLiteral("view-list-icons")), tr("Icons"), this);
+        m_actionIconsViewMode->setCheckable(true);
+        m_actionIconsViewMode->setShortcut(QKeySequence(tr("Ctrl+1")));
+        m_actionIconsViewMode->setShortcutContext(Qt::WindowShortcut);
+        m_actionIconsViewMode->setToolTip(tr("Show instances as a grid of icons"));
+
+        m_actionDetailsViewMode = new QAction(QIcon::fromTheme(QStringLiteral("view-list-tree")), tr("Details"), this);
+        m_actionDetailsViewMode->setCheckable(true);
+        m_actionDetailsViewMode->setShortcut(QKeySequence(tr("Ctrl+2")));
+        m_actionDetailsViewMode->setShortcutContext(Qt::WindowShortcut);
+        m_actionDetailsViewMode->setToolTip(tr("Show instances as a table with sortable columns"));
+
+        auto* viewModeGroup = new QActionGroup(this);
+        viewModeGroup->addAction(m_actionIconsViewMode);
+        viewModeGroup->addAction(m_actionDetailsViewMode);
+
+        connect(m_actionIconsViewMode, &QAction::triggered, this, [this] { setInstanceViewMode(InstanceViewMode::Icons); });
+        connect(m_actionDetailsViewMode, &QAction::triggered, this, [this] { setInstanceViewMode(InstanceViewMode::Details); });
+
+        // put the same actions into the View menu
+        ui->viewMenu->insertAction(ui->actionCAT, m_actionIconsViewMode);
+        ui->viewMenu->insertAction(ui->actionCAT, m_actionDetailsViewMode);
+        ui->viewMenu->insertSeparator(ui->actionCAT);
+
+        // and a single tool button with a menu into the main toolbar (like Dolphin's view_mode toolbutton)
+        auto* viewModeMenu = new QMenu(this);
+        viewModeMenu->addAction(m_actionIconsViewMode);
+        viewModeMenu->addAction(m_actionDetailsViewMode);
+
+        m_viewModeAction = new QAction(QIcon::fromTheme(QStringLiteral("view-list-icons")), tr("View Mode"), this);
+        m_viewModeAction->setMenu(viewModeMenu);
+        m_viewModeAction->setToolTip(tr("Change view mode"));
+        ui->mainToolBar->insertAction(ui->actionCAT, m_viewModeAction);
+        auto* viewModeButton = qobject_cast<QToolButton*>(ui->mainToolBar->widgetForAction(m_viewModeAction));
+        if (viewModeButton) {
+            viewModeButton->setPopupMode(QToolButton::InstantPopup);
+        }
     }
     // The cat background
     {
@@ -426,10 +519,13 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
 
     connect(ui->actionUndoTrashInstance, &QAction::triggered, this, &MainWindow::undoTrashInstance);
 
+    // apply the saved view mode (icons or details)
+    setInstanceViewMode(instanceViewModeFromString(APPLICATION->settings()->get("InstViewMode").toString()));
+
     setSelectedInstanceById(APPLICATION->settings()->get("SelectedInstance").toString());
 
     // removing this looks stupid
-    view->setFocus();
+    currentInstanceView()->setFocus();
 
     retranslateUi();
 }
@@ -464,6 +560,15 @@ void MainWindow::retranslateUi()
 
     changeIconButton->setToolTip(ui->actionChangeInstIcon->toolTip());
     renameButton->setToolTip(ui->actionRenameInstance->toolTip());
+
+    if (m_actionIconsViewMode && m_actionDetailsViewMode && m_viewModeAction) {
+        m_actionIconsViewMode->setText(tr("Icons"));
+        m_actionIconsViewMode->setToolTip(tr("Show instances as a grid of icons"));
+        m_actionDetailsViewMode->setText(tr("Details"));
+        m_actionDetailsViewMode->setToolTip(tr("Show instances as a table with sortable columns"));
+        m_viewModeAction->setText(tr("View Mode"));
+        m_viewModeAction->setToolTip(tr("Change view mode"));
+    }
 
     // replace the %1 with the launcher display name in some actions
     if (helpMenuButton->toolTip().contains("%1"))
@@ -532,7 +637,21 @@ void MainWindow::showInstanceContextMenu(const QPoint& pos)
     QAction* actionSep = new QAction("", this);
     actionSep->setSeparator(true);
 
-    bool onInstance = view->indexAt(pos).isValid();
+    // the context menu is shared between the grid view and the details view
+    auto* senderView = qobject_cast<QAbstractItemView*>(sender());
+    if (!senderView) {
+        senderView = view;
+    }
+    // the position is relative to the view widget; in the details view the viewport
+    // is offset by the header, so convert to viewport coordinates for hit testing
+    const QPoint viewportPos = senderView->viewport()->mapFrom(senderView, pos);
+    // right-clicking an instance selects it, so that the menu actions (and the
+    // header showing the instance name) target the clicked instance
+    const QModelIndex clickedIndex = senderView->indexAt(viewportPos);
+    const bool onInstance = clickedIndex.isValid();
+    if (onInstance) {
+        senderView->selectionModel()->setCurrentIndex(clickedIndex, QItemSelectionModel::ClearAndSelect);
+    }
     if (onInstance) {
         // reuse the file menu actions
         actions = ui->fileMenu->actions();
@@ -547,11 +666,15 @@ void MainWindow::showInstanceContextMenu(const QPoint& pos)
 
         // add header
         actions.prepend(actionSep);
-        QAction* actionVoid = new QAction(m_selectedInstance->name(), this);
+        QAction* actionVoid = new QAction(m_selectedInstance ? m_selectedInstance->name() : BuildConfig.LAUNCHER_DISPLAYNAME, this);
         actionVoid->setEnabled(false);
         actions.prepend(actionVoid);
     } else {
-        auto group = view->groupNameAt(pos);
+        // groups are only shown (and editable via context menu) in the grid view
+        QString group;
+        if (auto* gridView = qobject_cast<InstanceView*>(senderView)) {
+            group = gridView->groupNameAt(viewportPos);
+        }
 
         QAction* actionVoid = new QAction(group.isNull() ? BuildConfig.LAUNCHER_DISPLAYNAME : group, this);
         actionVoid->setEnabled(false);
@@ -585,7 +708,7 @@ void MainWindow::showInstanceContextMenu(const QPoint& pos)
     if (onInstance)
         myMenu.setEnabled(m_selectedInstance->canLaunch());
     */
-    myMenu.exec(view->mapToGlobal(pos));
+    myMenu.exec(senderView->mapToGlobal(pos));
 }
 
 void MainWindow::updateMainToolBar()
@@ -770,7 +893,7 @@ void MainWindow::defaultAccountChanged()
 
 bool MainWindow::eventFilter(QObject* obj, QEvent* ev)
 {
-    if (obj == view) {
+    if (obj == view || obj == detailsView) {
         if (ev->type() == QEvent::KeyPress) {
             secretEventFilter->input(ev);
             QKeyEvent* keyEvent = static_cast<QKeyEvent*>(ev);
@@ -844,8 +967,11 @@ void MainWindow::onCatToggled(bool state)
 
 void MainWindow::setCatBackground(bool enabled)
 {
-    view->setPaintCat(enabled);
-    view->viewport()->repaint();
+    // the cat (and snow) is painted into the grid view only
+    if (view) {
+        view->setPaintCat(enabled);
+        view->viewport()->repaint();
+    }
 }
 
 void MainWindow::runModalTask(Task* task)
@@ -1223,8 +1349,8 @@ void MainWindow::setSelectedInstanceById(const QString& id)
         return;
     const QModelIndex index = APPLICATION->instances()->getInstanceIndexById(id);
     if (index.isValid()) {
-        QModelIndex selectionIndex = proxymodel->mapFromSource(index);
-        view->selectionModel()->setCurrentIndex(selectionIndex, QItemSelectionModel::ClearAndSelect);
+        QModelIndex selectionIndex = currentInstanceProxy()->mapFromSource(index);
+        currentInstanceView()->selectionModel()->setCurrentIndex(selectionIndex, QItemSelectionModel::ClearAndSelect);
         updateStatusCenter();
     }
 }
@@ -1339,6 +1465,63 @@ void MainWindow::on_actionViewJavaFolder_triggered()
     DesktopServices::openPath(APPLICATION->javaPath(), true);
 }
 
+QAbstractItemView* MainWindow::currentInstanceView() const
+{
+    // these are managed by Qt's memory management model, so they are never null here
+    if (m_viewMode == InstanceViewMode::Details) {
+        return detailsView;
+    }
+    return view;
+}
+
+QSortFilterProxyModel* MainWindow::currentInstanceProxy() const
+{
+    if (m_viewMode == InstanceViewMode::Details) {
+        return detailsProxyModel;
+    }
+    return proxymodel;
+}
+
+QString MainWindow::currentInstanceId() const
+{
+    auto* instanceView = currentInstanceView();
+    if (!instanceView) {
+        return {};
+    }
+    const QModelIndex index = instanceView->selectionModel()->currentIndex();
+    if (!index.isValid()) {
+        return {};
+    }
+    return index.data(InstanceList::InstanceIDRole).toString();
+}
+
+void MainWindow::setInstanceViewMode(InstanceViewMode mode)
+{
+    // keep the selection when switching views (like Dolphin keeps it per view)
+    const QString selectedId = currentInstanceId();
+
+    m_viewMode = mode;
+    APPLICATION->settings()->set("InstViewMode", instanceViewModeToString(mode));
+
+    if (viewStack) {
+        viewStack->setCurrentWidget(mode == InstanceViewMode::Details ? static_cast<QWidget*>(detailsView) : static_cast<QWidget*>(view));
+    }
+    if (m_actionIconsViewMode && m_actionDetailsViewMode) {
+        m_actionIconsViewMode->setChecked(mode == InstanceViewMode::Icons);
+        m_actionDetailsViewMode->setChecked(mode == InstanceViewMode::Details);
+    }
+    if (m_viewModeAction) {
+        m_viewModeAction->setIcon(QIcon::fromTheme(mode == InstanceViewMode::Details ? QStringLiteral("view-list-tree") : QStringLiteral("view-list-icons")));
+    }
+
+    if (!selectedId.isEmpty()) {
+        setSelectedInstanceById(selectedId);
+    }
+    if (auto* instanceView = currentInstanceView()) {
+        instanceView->setFocus();
+    }
+}
+
 void MainWindow::refreshInstances()
 {
     APPLICATION->instances()->loadList();
@@ -1364,6 +1547,9 @@ void MainWindow::globalSettingsClosed()
     APPLICATION->instances()->loadList();
     proxymodel->invalidate();
     proxymodel->sort(0);
+    if (detailsProxyModel) {
+        detailsProxyModel->invalidate();
+    }
     updateMainToolBar();
     updateLaunchButton();
     updateThemeMenu();
@@ -1550,7 +1736,13 @@ void MainWindow::on_actionExportInstanceFlamePack_triggered()
 void MainWindow::on_actionRenameInstance_triggered()
 {
     if (m_selectedInstance) {
-        view->edit(view->currentIndex());
+        auto* currentView = currentInstanceView();
+        auto index = currentView->currentIndex();
+        // renaming always happens in the name column (like in the grid view)
+        if (index.column() != 0) {
+            index = index.sibling(index.row(), 0);
+        }
+        currentView->edit(index);
     }
 }
 
@@ -1683,7 +1875,12 @@ void MainWindow::instanceSelectRequest(QString id)
 
 void MainWindow::instanceDataChanged(const QModelIndex& topLeft, const QModelIndex& bottomRight)
 {
-    auto current = view->selectionModel()->currentIndex();
+    // both proxies broadcast dataChanged() about the same source model; only react to the
+    // one feeding the visible view (row order may differ between them)
+    if (auto* senderProxy = qobject_cast<QSortFilterProxyModel*>(sender()); senderProxy && senderProxy != currentInstanceProxy()) {
+        return;
+    }
+    auto current = currentInstanceView()->selectionModel()->currentIndex();
     QItemSelection test(topLeft, bottomRight);
     if (test.contains(current)) {
         instanceChanged(current, current);
@@ -1766,6 +1963,6 @@ void MainWindow::setInstanceActionsEnabled(bool enabled)
 
 void MainWindow::refreshCurrentInstance()
 {
-    auto current = view->selectionModel()->currentIndex();
+    auto current = currentInstanceView()->selectionModel()->currentIndex();
     instanceChanged(current, current);
 }

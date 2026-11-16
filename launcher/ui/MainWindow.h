@@ -48,19 +48,26 @@
 
 #include "BaseInstance.h"
 #include "minecraft/auth/MinecraftAccount.h"
+#include "ui/instanceview/InstanceViewMode.h"
 
 class LaunchController;
 class NewsChecker;
 class QToolButton;
 class InstanceProxyModel;
+class InstanceDetailsModel;
 class LabeledToolButton;
 class QLabel;
 class MinecraftLauncher;
 class BaseProfilerFactory;
 class InstanceView;
+class InstanceDetailsView;
 class KonamiCode;
 class InstanceTask;
 class LabeledToolButton;
+class QAbstractItemView;
+class QAction;
+class QSortFilterProxyModel;
+class QStackedWidget;
 
 namespace Ui {
 class MainWindow;
@@ -227,14 +234,30 @@ class MainWindow : public QMainWindow {
     void updateStatusCenter();
     void setInstanceActionsEnabled(bool enabled);
 
+    /// switches between the grid and the details (table) view, modeled after DolphinView::setViewMode()
+    void setInstanceViewMode(InstanceViewMode mode);
+    /// the view that is currently visible (grid or details)
+    QAbstractItemView* currentInstanceView() const;
+    /// the proxy model feeding the currently visible view
+    QSortFilterProxyModel* currentInstanceProxy() const;
+    /// id of the instance selected in the currently visible view, or an empty string
+    QString currentInstanceId() const;
+
     void runModalTask(Task* task);
     void instanceFromInstanceTask(InstanceTask* task);
 
    private:
     Ui::MainWindow* ui;
     // these are managed by Qt's memory management model!
+    QStackedWidget* viewStack = nullptr;
     InstanceView* view = nullptr;
+    InstanceDetailsView* detailsView = nullptr;
     InstanceProxyModel* proxymodel = nullptr;
+    InstanceDetailsModel* detailsProxyModel = nullptr;
+    InstanceViewMode m_viewMode = InstanceViewMode::Icons;
+    QAction* m_actionIconsViewMode = nullptr;
+    QAction* m_actionDetailsViewMode = nullptr;
+    QAction* m_viewModeAction = nullptr;
     QToolButton* newsLabel = nullptr;
     QLabel* m_statusLeft = nullptr;
     QLabel* m_statusCenter = nullptr;
