@@ -130,7 +130,7 @@ Freesm Launcher использует переводы Prism Launcher'а на д�
 
 Примечание: просмотр логов реализован с помощью KDE KTextEditor (текстовый компонент, на котором построен KWrite), поэтому для сборки теперь требуется KDE Frameworks 6 с компонентом KTextEditor:
 
-- Debian/Ubuntu: `libkf6texteditor-dev`
+- Debian/Ubuntu: `libkf6texteditor-dev` (обратите внимание: этот пакет есть только в Ubuntu 25.04 / Debian trixie и новее; в более старых выпусках, например Ubuntu 24.04, есть только KDE Frameworks 5.x, и собрать просмотр логов там нельзя)
 - Windows (MSYS2): `mingw-w64-<env>-ktexteditor` (например, `pacboy ktexteditor:p`)
 - Nix: `kdePackages.ktexteditor`
 
