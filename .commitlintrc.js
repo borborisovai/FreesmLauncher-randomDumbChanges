@@ -10,7 +10,7 @@ module.exports = {
 		'footer-max-line-length': [
 			Severity.Error,
 			'always',
-			70,
+			100,
 		],
 		'header-max-length': [Severity.Error, 'always', 70],
 		'header-trim': [Severity.Error, 'always'],
