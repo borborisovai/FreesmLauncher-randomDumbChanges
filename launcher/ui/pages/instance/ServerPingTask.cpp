@@ -1,4 +1,5 @@
 #include <QFutureWatcher>
+#include <QRegularExpression>
 
 #include <Json.h>
 #include "Exception.h"
@@ -16,6 +17,46 @@ unsigned getOnlinePlayers(QJsonObject data)
     }
 }
 
+/// MOTD is a Minecraft chat component (string, object or array) - extract the plain text recursively
+static QString extractChatText(const QJsonValue& value)
+{
+    if (value.isString()) {
+        return value.toString();
+    }
+    if (value.isObject()) {
+        const QJsonObject object = value.toObject();
+        QString text = object.value("text").toString();
+        if (object.value("extra").isArray()) {
+            for (const auto& part : object.value("extra").toArray()) {
+                text += extractChatText(part);
+            }
+        }
+        return text;
+    }
+    if (value.isArray()) {
+        QString text;
+        for (const auto& part : value.toArray()) {
+            text += extractChatText(part);
+        }
+        return text;
+    }
+    return {};
+}
+
+static QString stripFormattingCodes(const QString& text)
+{
+    static const QRegularExpression s_formattingCodes(QStringLiteral("\u00a7."));  // the section sign (U+00A7), legacy color codes
+    QString stripped = text;
+    stripped.remove(s_formattingCodes);
+    // chat components use newlines for the two-line MOTD layout; keep them as newlines
+    return stripped.trimmed();
+}
+
+static QString getMotd(QJsonObject data)
+{
+    return stripFormattingCodes(extractChatText(data.value("description")));
+}
+
 void ServerPingTask::executeTask()
 {
     qDebug() << "Querying status of" << QString("%1:%2").arg(m_domain).arg(m_port);
@@ -30,6 +71,7 @@ void ServerPingTask::executeTask()
 
         connect(client, &McClient::succeeded, this, [this](QJsonObject data) {
             m_outputOnlinePlayers = getOnlinePlayers(data);
+            m_outputMotd = getMotd(data);
             qDebug() << "Online players:" << m_outputOnlinePlayers;
             emitSucceeded();
         });

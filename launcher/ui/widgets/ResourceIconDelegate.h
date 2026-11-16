@@ -22,7 +22,8 @@
 
 /**
  * Delegate for the icon grid view of the external resources pages (mods,
- * resource packs, shader packs, texture packs and data packs).
+ * resource packs, shader packs, texture packs and data packs) and for the
+ * icon grid views of the worlds, servers and components pages.
  *
  * The grid shows each resource as a large icon with its name below it,
  * and a small badge in the corner for resources that have reported issues
@@ -35,18 +36,35 @@
  *   column 2 - the name.
  * Shader packs have no embedded image and use the base layout (name in column 1);
  * pass -1 as \a imageColumn for those, the delegate will paint a generic placeholder.
+ *
+ * Views whose models have no enable/disable checkbox or issue badge can opt out
+ * (see \a checkColumn and \a badgeColumn).
  */
 class ResourceIconDelegate : public QStyledItemDelegate {
     Q_OBJECT
 
    public:
     /// \a imageColumn and \a nameColumn default to the shared layout (1 and 2).
-    explicit ResourceIconDelegate(int imageColumn = 1, int nameColumn = 2, QObject* parent = nullptr);
+    /// Pass -1 for \a checkColumn to skip the disabled dimming (views without a checkbox),
+    /// and -1 for \a badgeColumn to skip the issue badge.
+    explicit ResourceIconDelegate(int imageColumn = 1,
+                                  int nameColumn = 2,
+                                  QObject* parent = nullptr,
+                                  int checkColumn = 0,
+                                  int badgeColumn = 2);
 
     void paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override;
     QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const override;
 
+    /// Change the icon size (in pixels); the cell size adapts to fit it.
+    void setIconSize(int iconSize);
+    int iconSize() const { return m_iconSize; }
+
    private:
     int m_imageColumn;
     int m_nameColumn;
+    int m_checkColumn;
+    /// -1 = no badge, >=0 = the column whose DecorationRole holds the badge icon
+    int m_badgeColumn;
+    int m_iconSize = 56;
 };

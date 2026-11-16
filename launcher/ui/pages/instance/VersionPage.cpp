@@ -44,11 +44,16 @@
 #include <QEvent>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QHeaderView>
 #include <QListView>
 #include <QMenu>
 #include <QMessageBox>
+#include <QStackedWidget>
+#include <QStatusBar>
 #include <QString>
 #include <QUrl>
+#include <QActionGroup>
+#include <QItemSelectionModel>
 #include <algorithm>
 
 #include "QObjectPtr.h"
@@ -64,6 +69,9 @@
 #include "ui/dialogs/VersionSelectDialog.h"
 
 #include "ui/GuiUtil.h"
+#include "ui/widgets/ResourceIconDelegate.h"
+#include "ui/widgets/ZoomSlider.h"
+#include <QToolButton>
 
 #include "DesktopServices.h"
 #include "Exception.h"
@@ -163,20 +171,109 @@ VersionPage::VersionPage(MinecraftInstance* inst, QWidget* parent) : QMainWindow
     ui->packageView->setModel(m_filterModel);
     ui->packageView->installEventFilter(this);
     ui->packageView->setSelectionMode(QAbstractItemView::SingleSelection);
+    ui->packageView->setSelectionBehavior(QAbstractItemView::SelectRows);
     ui->packageView->setContextMenuPolicy(Qt::CustomContextMenu);
+
+    // Icon grid view, stacked with the table (modeled after Dolphin's view mode switching).
+    // Both views share the same proxy model and keep their selections in sync.
+    m_iconView = new QListView(this);
+    m_iconView->setViewMode(QListView::IconMode);
+    m_iconView->setIconSize(QSize(64, 64));
+    m_iconView->setGridSize(QSize(112, 108));
+    m_iconView->setSpacing(6);
+    m_iconView->setResizeMode(QListView::Adjust);
+    m_iconView->setMovement(QListView::Static);
+    m_iconView->setUniformItemSizes(true);
+    m_iconView->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_iconView->setFrameShape(QFrame::NoFrame);
+    m_iconView->setAttribute(Qt::WA_MacShowFocusRect, false);
+    m_iconView->setItemDelegate(new ResourceIconDelegate(0, 0, m_iconView, /*checkColumn=*/0, /*badgeColumn=*/-1));
+    m_iconView->setModel(m_filterModel);
+    m_iconView->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_iconView, &QWidget::customContextMenuRequested, this, &VersionPage::showContextMenu);
+    connect(m_iconView, &QAbstractItemView::activated, this, [this](const QModelIndex& index) {
+        auto sourceIndex = m_filterModel->mapToSource(index);
+        auto component = m_profile->getComponent(sourceIndex.row());
+        component->setEnabled(!component->isEnabled());
+    });
+
+    // replace packageView's cell with a stack of the table and the grid
+    auto* verticalLayout = ui->verticalLayout;
+    verticalLayout->removeWidget(ui->packageView);
+    m_viewStack = new QStackedWidget(this);
+    m_viewStack->addWidget(ui->packageView);
+    m_viewStack->addWidget(m_iconView);
+    verticalLayout->insertWidget(0, m_viewStack);
+
+    // keep the selections of the two views in sync (same proxy model)
+    connect(ui->packageView->selectionModel(), &QItemSelectionModel::selectionChanged, this,
+            [this] { syncSelection(ui->packageView->selectionModel(), m_iconView->selectionModel()); });
+    connect(m_iconView->selectionModel(), &QItemSelectionModel::selectionChanged, this,
+            [this] { syncSelection(m_iconView->selectionModel(), ui->packageView->selectionModel()); });
 
     auto smodel = ui->packageView->selectionModel();
     connect(smodel, &QItemSelectionModel::currentChanged, this, &VersionPage::versionCurrent);
     connect(smodel, &QItemSelectionModel::currentChanged, this, &VersionPage::packageCurrent);
+    connect(m_iconView->selectionModel(), &QItemSelectionModel::currentChanged, this, &VersionPage::versionCurrent);
+    connect(m_iconView->selectionModel(), &QItemSelectionModel::currentChanged, this, &VersionPage::packageCurrent);
     connect(m_profile, &PackProfile::minecraftChanged, this, &VersionPage::updateVersionControls);
     updateVersionControls();
     preselect(0);
     connect(ui->packageView, &ModListView::customContextMenuRequested, this, &VersionPage::showContextMenu);
     connect(ui->packageView, &QAbstractItemView::activated, this, [this](const QModelIndex& index) {
-        auto component = m_profile->getComponent(index.row());
+        auto sourceIndex = m_filterModel->mapToSource(index);
+        auto component = m_profile->getComponent(sourceIndex.row());
         component->setEnabled(!component->isEnabled());
     });
     connect(ui->filterEdit, &QLineEdit::textChanged, this, &VersionPage::onFilterTextChanged);
+
+    // view mode switcher, modeled after Dolphin's view_mode action; the mode is
+    // persisted globally in the ComponentListViewMode setting
+    m_actionListViewIcons = new QAction(QIcon::fromTheme(QStringLiteral("view-list-icons")), tr("Icons"), this);
+    m_actionListViewIcons->setCheckable(true);
+    m_actionListViewIcons->setToolTip(tr("Show items as a grid of icons"));
+    m_actionListViewDetails = new QAction(QIcon::fromTheme(QStringLiteral("view-list-tree")), tr("Details"), this);
+    m_actionListViewDetails->setCheckable(true);
+    m_actionListViewDetails->setToolTip(tr("Show items as a table"));
+    auto* viewModeGroup = new QActionGroup(this);
+    viewModeGroup->addAction(m_actionListViewIcons);
+    viewModeGroup->addAction(m_actionListViewDetails);
+    connect(m_actionListViewIcons, &QAction::triggered, this, [this] { setViewMode(InstanceViewMode::Icons); });
+    connect(m_actionListViewDetails, &QAction::triggered, this, [this] { setViewMode(InstanceViewMode::Details); });
+
+    auto* viewModeMenu = new QMenu(this);
+    viewModeMenu->addAction(m_actionListViewIcons);
+    viewModeMenu->addAction(m_actionListViewDetails);
+    m_viewModeAction = new QAction(QIcon::fromTheme(QStringLiteral("view-list-tree")), tr("View Mode"), this);
+    m_viewModeAction->setMenu(viewModeMenu);
+    m_viewModeAction->setToolTip(tr("Change view mode"));
+    ui->toolBar->insertActionBefore(ui->actionChange_version, m_viewModeAction);
+    if (auto* button = qobject_cast<QToolButton*>(ui->toolBar->widgetForAction(m_viewModeAction))) {
+        button->setPopupMode(QToolButton::InstantPopup);
+    }
+
+    // zoom actions, modeled after Dolphin's zoom_in/zoom_out actions;
+    // the slider itself lives in the status bar, like Dolphin's zoom slider
+    const auto zoomActions = createZoomToolbarActions(this);
+    m_actionZoomIn = zoomActions.zoomIn;
+    m_actionZoomOut = zoomActions.zoomOut;
+    m_actionZoomReset = zoomActions.zoomReset;
+    connect(m_actionZoomIn, &QAction::triggered, this, [this] { setZoomLevel(m_zoomLevel + 1); });
+    connect(m_actionZoomOut, &QAction::triggered, this, [this] { setZoomLevel(m_zoomLevel - 1); });
+    connect(m_actionZoomReset, &QAction::triggered, this, [this] { setZoomLevel(4); });
+    ui->toolBar->insertActionBefore(m_viewModeAction, m_actionZoomOut);
+    ui->toolBar->insertActionBefore(m_viewModeAction, m_actionZoomIn);
+    this->addAction(m_actionZoomReset);  // widget-level, shortcut-only action (no toolbar button)
+
+    auto* zoomSlider = new ZoomStatusSlider(this);
+    m_zoomSlider = zoomSlider;
+    connect(zoomSlider, &ZoomStatusSlider::zoomLevelChanged, this, [this](int level) { setZoomLevel(level); });
+    setStatusBar(new QStatusBar(this));
+    statusBar()->addPermanentWidget(zoomSlider);
+
+    // apply the saved view mode (table or icon grid) and zoom level of the grid
+    setViewMode(instanceViewModeFromString(APPLICATION->settings()->get("ComponentListViewMode").toString()));
+    setZoomLevel(APPLICATION->settings()->get("ComponentIconZoomLevel").toInt(), /*save=*/false);
 }
 
 VersionPage::~VersionPage()
@@ -187,7 +284,8 @@ VersionPage::~VersionPage()
 void VersionPage::showContextMenu(const QPoint& pos)
 {
     auto menu = ui->toolBar->createContextMenu(this, tr("Context menu"));
-    menu->exec(ui->packageView->mapToGlobal(pos));
+    auto* view = qobject_cast<QWidget*>(sender());
+    menu->exec(view ? view->mapToGlobal(pos) : mapToGlobal(pos));
     delete menu;
 }
 
@@ -197,7 +295,7 @@ void VersionPage::packageCurrent(const QModelIndex& current, [[maybe_unused]] co
         ui->frame->clear();
         return;
     }
-    int row = current.row();
+    int row = m_filterModel->mapToSource(current).row();
     auto patch = m_profile->getComponent(row);
     auto severity = patch->getProblemSeverity();
     switch (severity) {
@@ -271,10 +369,10 @@ void VersionPage::on_actionReload_triggered()
 
 void VersionPage::on_actionRemove_triggered()
 {
-    if (!ui->packageView->currentIndex().isValid()) {
+    if (!currentView()->currentIndex().isValid()) {
         return;
     }
-    int index = ui->packageView->currentIndex().row();
+    int index = m_filterModel->mapToSource(currentView()->currentIndex()).row();
     auto component = m_profile->getComponent(index);
     if (component->isCustom()) {
         auto response = CustomMessageBox::selectable(this, tr("Confirm Removal"),
@@ -473,7 +571,7 @@ void VersionPage::on_actionMinecraftFolder_triggered()
 
 void VersionPage::versionCurrent(const QModelIndex& current, [[maybe_unused]] const QModelIndex& previous)
 {
-    currentIdx = current.row();
+    currentIdx = current.isValid() ? m_filterModel->mapToSource(current).row() : -1;
     updateButtons(currentIdx);
 }
 
@@ -489,7 +587,8 @@ void VersionPage::preselect(int row)
         return;
     }
     auto model_index = m_profile->index(row);
-    ui->packageView->selectionModel()->select(model_index, QItemSelectionModel::SelectCurrent | QItemSelectionModel::Rows);
+    auto proxy_index = m_filterModel->mapFromSource(model_index);
+    ui->packageView->selectionModel()->select(proxy_index, QItemSelectionModel::SelectCurrent | QItemSelectionModel::Rows);
     updateButtons(row);
 }
 
@@ -509,10 +608,10 @@ ComponentPtr VersionPage::current()
 
 int VersionPage::currentRow()
 {
-    if (ui->packageView->selectionModel()->selectedRows().isEmpty()) {
+    if (currentView()->selectionModel()->selectedRows().isEmpty()) {
         return -1;
     }
-    return ui->packageView->selectionModel()->selectedRows().first().row();
+    return m_filterModel->mapToSource(currentView()->selectionModel()->selectedRows().first()).row();
 }
 
 void VersionPage::on_actionCustomize_triggered()
@@ -577,6 +676,84 @@ void VersionPage::on_actionRevert_triggered()
 void VersionPage::onFilterTextChanged(const QString& newContents)
 {
     m_filterModel->setFilterFixedString(newContents);
+}
+
+QAbstractItemView* VersionPage::currentView() const
+{
+    if (m_viewMode == InstanceViewMode::Icons && m_iconView) {
+        return m_iconView;
+    }
+    return ui->packageView;
+}
+
+void VersionPage::syncSelection(QItemSelectionModel* from, QItemSelectionModel* to)
+{
+    if (m_syncing_selection || !from || !to) {
+        return;
+    }
+    m_syncing_selection = true;
+
+    // collect the unique rows of the current selection and re-select them
+    // (column 0 only; SelectRows views still highlight the whole row, and this
+    // keeps selectedIndexes().size() equal to the number of selected rows)
+    QList<int> rows;
+    const auto* model = from->model();
+    for (const QModelIndex& index : from->selection().indexes()) {
+        if (!rows.contains(index.row())) {
+            rows.append(index.row());
+        }
+    }
+    QItemSelection selection;
+    for (int row : rows) {
+        selection.select(model->index(row, 0), model->index(row, 0));
+    }
+    to->select(selection, QItemSelectionModel::ClearAndSelect);
+
+    m_syncing_selection = false;
+}
+
+void VersionPage::setViewMode(InstanceViewMode mode)
+{
+    m_viewMode = mode;
+    APPLICATION->settings()->set("ComponentListViewMode", instanceViewModeToString(mode));
+
+    if (m_viewStack) {
+        m_viewStack->setCurrentWidget(mode == InstanceViewMode::Icons ? static_cast<QWidget*>(m_iconView)
+                                                                       : static_cast<QWidget*>(ui->packageView));
+    }
+    if (m_actionListViewIcons && m_actionListViewDetails) {
+        m_actionListViewIcons->setChecked(mode == InstanceViewMode::Icons);
+        m_actionListViewDetails->setChecked(mode == InstanceViewMode::Details);
+    }
+    if (m_viewModeAction) {
+        m_viewModeAction->setIcon(QIcon::fromTheme(mode == InstanceViewMode::Icons ? QStringLiteral("view-list-icons")
+                                                                                   : QStringLiteral("view-list-tree")));
+    }
+    if (auto* view = currentView()) {
+        view->setFocus();
+    }
+}
+
+void VersionPage::setZoomLevel(int level, bool save)
+{
+    m_zoomLevel = qBound(ZoomLevelInfo::minimumLevel(), level, ZoomLevelInfo::maximumLevel());
+    const int iconSize = ZoomLevelInfo::iconSizeForZoomLevel(m_zoomLevel);
+
+    if (auto* delegate = qobject_cast<ResourceIconDelegate*>(m_iconView ? m_iconView->itemDelegate() : nullptr)) {
+        delegate->setIconSize(iconSize);
+    }
+    if (m_iconView) {
+        m_iconView->setIconSize(QSize(iconSize, iconSize));
+        m_iconView->setGridSize(QSize(iconSize + 48, iconSize + 44));
+        m_iconView->viewport()->update();
+    }
+    if (m_zoomSlider) {
+        m_zoomSlider->setZoomLevel(m_zoomLevel);
+    }
+
+    if (save) {
+        APPLICATION->settings()->set("ComponentIconZoomLevel", m_zoomLevel);
+    }
 }
 
 #include "VersionPage.moc"

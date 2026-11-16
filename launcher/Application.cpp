@@ -866,6 +866,16 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
         m_settings->registerSetting("InstRenamingMode", "AskEverytime");
         m_settings->registerSetting("InstViewMode", "Icons");
         m_settings->registerSetting("ResourceListViewMode", "Details");
+        m_settings->registerSetting("WorldListViewMode", "Details");
+        m_settings->registerSetting("ServersListViewMode", "Details");
+        m_settings->registerSetting("ScreenshotListViewMode", "Icons");
+        m_settings->registerSetting("ComponentListViewMode", "Details");
+        m_settings->registerSetting("InstIconZoomLevel", 3);
+        m_settings->registerSetting("ResourceIconZoomLevel", 4);
+        m_settings->registerSetting("WorldsIconZoomLevel", 4);
+        m_settings->registerSetting("ServersIconZoomLevel", 4);
+        m_settings->registerSetting("ScreenshotIconZoomLevel", 8);
+        m_settings->registerSetting("ComponentIconZoomLevel", 4);
         m_settings->registerSetting("SelectedInstance", QString());
 
         // Window state and geometry

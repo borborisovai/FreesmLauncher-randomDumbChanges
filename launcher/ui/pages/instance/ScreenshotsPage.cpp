@@ -52,11 +52,21 @@
 #include <QRegularExpression>
 #include <QSet>
 #include <QStyledItemDelegate>
+#include <QItemSelectionModel>
+#include <QAbstractItemView>
+#include <QActionGroup>
+#include <QHeaderView>
+#include <QStackedWidget>
+#include <QStatusBar>
+#include <QTreeView>
 #include <memory>
 #include <utility>
 
 #include <Application.h>
 #include "settings/SettingsObject.h"
+
+#include "ui/widgets/ZoomSlider.h"
+#include <QToolButton>
 
 #include "ui/dialogs/CustomMessageBox.h"
 #include "ui/dialogs/ProgressDialog.h"
@@ -293,11 +303,78 @@ ScreenshotsPage::ScreenshotsPage(QString path, QWidget* parent)
     ui->listView->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(ui->listView, &QListView::customContextMenuRequested, this, &ScreenshotsPage::showContextMenu);
     connect(ui->listView, &QAbstractItemView::activated, this, &ScreenshotsPage::onItemActivated);
+
+    // Details (file table) view, stacked with the icon grid (modeled after Dolphin's view mode switching).
+    // Both views share the same filter model and keep their selections in sync.
+    m_detailView = new QTreeView(this);
+    m_detailView->setRootIsDecorated(false);
+    m_detailView->setAlternatingRowColors(true);
+    m_detailView->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    m_detailView->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_detailView->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_detailView->setFrameShape(QFrame::NoFrame);
+    m_detailView->setAttribute(Qt::WA_MacShowFocusRect, false);
+    m_detailView->installEventFilter(this);
+    m_detailView->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_detailView, &QWidget::customContextMenuRequested, this, &ScreenshotsPage::showContextMenu);
+    connect(m_detailView, &QAbstractItemView::activated, this, &ScreenshotsPage::onItemActivated);
+
+    // stack the grid and the table; the grid layout cell is the one the listView occupied
+    auto* outerLayout = ui->horizontalLayout;
+    outerLayout->removeWidget(ui->listView);
+    m_viewStack = new QStackedWidget(this);
+    m_viewStack->addWidget(ui->listView);
+    m_viewStack->addWidget(m_detailView);
+    outerLayout->addWidget(m_viewStack);
+
+    // view mode switcher, modeled after Dolphin's view_mode action; the mode is
+    // persisted globally in the ScreenshotListViewMode setting
+    m_actionListViewIcons = new QAction(QIcon::fromTheme(QStringLiteral("view-list-icons")), tr("Icons"), this);
+    m_actionListViewIcons->setCheckable(true);
+    m_actionListViewIcons->setToolTip(tr("Show items as an icon grid"));
+    m_actionListViewDetails = new QAction(QIcon::fromTheme(QStringLiteral("view-list-tree")), tr("Details"), this);
+    m_actionListViewDetails->setCheckable(true);
+    m_actionListViewDetails->setToolTip(tr("Show items as a table"));
+    auto* viewModeGroup = new QActionGroup(this);
+    viewModeGroup->addAction(m_actionListViewIcons);
+    viewModeGroup->addAction(m_actionListViewDetails);
+    connect(m_actionListViewIcons, &QAction::triggered, this, [this] { setViewMode(InstanceViewMode::Icons); });
+    connect(m_actionListViewDetails, &QAction::triggered, this, [this] { setViewMode(InstanceViewMode::Details); });
+
+    auto* viewModeMenu = new QMenu(this);
+    viewModeMenu->addAction(m_actionListViewIcons);
+    viewModeMenu->addAction(m_actionListViewDetails);
+    m_viewModeAction = new QAction(QIcon::fromTheme(QStringLiteral("view-list-icons")), tr("View Mode"), this);
+    m_viewModeAction->setMenu(viewModeMenu);
+    m_viewModeAction->setToolTip(tr("Change view mode"));
+    ui->toolBar->insertActionBefore(ui->actionUpload, m_viewModeAction);
+    if (auto* button = qobject_cast<QToolButton*>(ui->toolBar->widgetForAction(m_viewModeAction))) {
+        button->setPopupMode(QToolButton::InstantPopup);
+    }
+
+    // zoom actions, modeled after Dolphin's zoom_in/zoom_out actions;
+    // the slider itself lives in the status bar, like Dolphin's zoom slider
+    const auto zoomActions = createZoomToolbarActions(this);
+    m_actionZoomIn = zoomActions.zoomIn;
+    m_actionZoomOut = zoomActions.zoomOut;
+    m_actionZoomReset = zoomActions.zoomReset;
+    connect(m_actionZoomIn, &QAction::triggered, this, [this] { setZoomLevel(m_zoomLevel + 1); });
+    connect(m_actionZoomOut, &QAction::triggered, this, [this] { setZoomLevel(m_zoomLevel - 1); });
+    connect(m_actionZoomReset, &QAction::triggered, this, [this] { setZoomLevel(8); });
+    ui->toolBar->insertActionBefore(m_viewModeAction, m_actionZoomOut);
+    ui->toolBar->insertActionBefore(m_viewModeAction, m_actionZoomIn);
+    this->addAction(m_actionZoomReset);  // widget-level, shortcut-only action (no toolbar button)
+
+    auto* zoomSlider = new ZoomStatusSlider(this);
+    m_zoomSlider = zoomSlider;
+    connect(zoomSlider, &ZoomStatusSlider::zoomLevelChanged, this, [this](int level) { setZoomLevel(level); });
+    setStatusBar(new QStatusBar(this));
+    statusBar()->addPermanentWidget(zoomSlider);
 }
 
 bool ScreenshotsPage::eventFilter(QObject* obj, QEvent* evt)
 {
-    if (obj != ui->listView) {
+    if (obj != ui->listView && obj != m_detailView) {
         return QWidget::eventFilter(obj, evt);
     }
     if (evt->type() != QEvent::KeyPress) {
@@ -337,11 +414,12 @@ void ScreenshotsPage::showContextMenu(const QPoint& pos)
 {
     auto* menu = ui->toolBar->createContextMenu(this, tr("Context menu"));
 
-    if (ui->listView->selectionModel()->selectedIndexes().size() > 1) {
+    if (currentView()->selectionModel()->selectedRows().size() > 1) {
         menu->removeAction(ui->actionCopy_Image);
     }
 
-    menu->exec(ui->listView->mapToGlobal(pos));
+    auto* view = qobject_cast<QWidget*>(sender());
+    menu->exec(view ? view->mapToGlobal(pos) : mapToGlobal(pos));
     delete menu;
 }
 
@@ -363,7 +441,7 @@ void ScreenshotsPage::onItemActivated(QModelIndex index) const
 
 void ScreenshotsPage::onCurrentSelectionChanged(const QItemSelection& /*selected*/) const
 {
-    const auto selected = ui->listView->selectionModel()->selectedIndexes();
+    const auto selected = currentView()->selectionModel()->selectedRows();
 
     bool allReadable = !selected.isEmpty();
     bool allWritable = !selected.isEmpty();
@@ -395,7 +473,7 @@ void ScreenshotsPage::on_actionView_Folder_triggered() const
 
 void ScreenshotsPage::on_actionUpload_triggered()
 {
-    auto selection = ui->listView->selectionModel()->selectedIndexes();
+    auto selection = currentView()->selectionModel()->selectedRows();
     if (selection.isEmpty()) {
         return;
     }
@@ -505,7 +583,7 @@ void ScreenshotsPage::on_actionUpload_triggered()
 
 void ScreenshotsPage::on_actionCopy_Image_triggered() const
 {
-    auto selection = ui->listView->selectionModel()->selectedIndexes();
+    auto selection = currentView()->selectionModel()->selectedRows();
     if (selection.size() < 1) {
         return;
     }
@@ -520,7 +598,7 @@ void ScreenshotsPage::on_actionCopy_Image_triggered() const
 
 void ScreenshotsPage::on_actionCopy_File_s_triggered() const
 {
-    auto selection = ui->listView->selectionModel()->selectedIndexes();
+    auto selection = currentView()->selectionModel()->selectedRows();
     if (selection.size() < 1) {
         // Don't do anything so we don't empty the users clipboard
         return;
@@ -538,7 +616,7 @@ void ScreenshotsPage::on_actionCopy_File_s_triggered() const
 
 void ScreenshotsPage::on_actionDelete_triggered()
 {
-    auto selected = ui->listView->selectionModel()->selectedIndexes();
+    auto selected = currentView()->selectionModel()->selectedRows();
 
     const qsizetype count = selected.size();
     QString text;
@@ -572,11 +650,12 @@ void ScreenshotsPage::on_actionDelete_triggered()
 
 void ScreenshotsPage::on_actionRename_triggered() const
 {
-    auto selection = ui->listView->selectionModel()->selectedIndexes();
+    auto selection = currentView()->selectionModel()->selectedRows();
     if (selection.isEmpty()) {
         return;
     }
-    ui->listView->edit(selection.first());
+    const QModelIndex nameIndex = selection.first().sibling(selection.first().row(), 0);
+    currentView()->edit(nameIndex);
     // TODO: mass renaming
 }
 
@@ -590,12 +669,26 @@ void ScreenshotsPage::openedImpl()
         const auto idx = m_model->setRootPath(path);
         if (idx.isValid()) {
             ui->listView->setModel(m_filterModel.get());
+            m_detailView->setModel(m_filterModel.get());
+            m_detailView->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+            m_detailView->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+            m_detailView->header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+            m_detailView->header()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
             connect(ui->listView->selectionModel(), &QItemSelectionModel::selectionChanged, this,
                     &ScreenshotsPage::onCurrentSelectionChanged);
-            onCurrentSelectionChanged(ui->listView->selectionModel()->selection());  // set initial button enable states
+            connect(m_detailView->selectionModel(), &QItemSelectionModel::selectionChanged, this,
+                    &ScreenshotsPage::onCurrentSelectionChanged);
+            // keep the selections of the two views in sync (same filter model)
+            connect(ui->listView->selectionModel(), &QItemSelectionModel::selectionChanged, this,
+                    [this] { syncSelection(ui->listView->selectionModel(), m_detailView->selectionModel()); });
+            connect(m_detailView->selectionModel(), &QItemSelectionModel::selectionChanged, this,
+                    [this] { syncSelection(m_detailView->selectionModel(), ui->listView->selectionModel()); });
+            onCurrentSelectionChanged(currentView()->selectionModel()->selection());  // set initial button enable states
             ui->listView->setRootIndex(m_filterModel->mapFromSource(idx));
+            m_detailView->setRootIndex(m_filterModel->mapFromSource(idx));
         } else {
             ui->listView->setModel(nullptr);
+            m_detailView->setModel(nullptr);
         }
     }
 
@@ -603,11 +696,89 @@ void ScreenshotsPage::openedImpl()
     m_wide_bar_setting = APPLICATION->settings()->getOrRegisterSetting(setting_name);
 
     ui->toolBar->setVisibilityState(QByteArray::fromBase64(m_wide_bar_setting->get().toString().toUtf8()));
+
+    // apply the saved view mode (icon grid or file table) and zoom level of the grid
+    setViewMode(instanceViewModeFromString(APPLICATION->settings()->get("ScreenshotListViewMode").toString()));
+    setZoomLevel(APPLICATION->settings()->get("ScreenshotIconZoomLevel").toInt(), /*save=*/false);
 }
 
 void ScreenshotsPage::closedImpl()
 {
     m_wide_bar_setting->set(QString::fromUtf8(ui->toolBar->getVisibilityState().toBase64()));
+}
+
+QAbstractItemView* ScreenshotsPage::currentView() const
+{
+    if (m_viewMode == InstanceViewMode::Details && m_detailView) {
+        return m_detailView;
+    }
+    return ui->listView;
+}
+
+void ScreenshotsPage::syncSelection(QItemSelectionModel* from, QItemSelectionModel* to)
+{
+    if (m_syncing_selection || !from || !to) {
+        return;
+    }
+    m_syncing_selection = true;
+
+    // collect the unique rows of the current selection and re-select them
+    // (column 0 only; SelectRows views still highlight the whole row, and this
+    // keeps selectedIndexes().size() equal to the number of selected rows)
+    QList<int> rows;
+    const auto* model = from->model();
+    for (const QModelIndex& index : from->selection().indexes()) {
+        if (!rows.contains(index.row())) {
+            rows.append(index.row());
+        }
+    }
+    QItemSelection selection;
+    for (int row : rows) {
+        selection.select(model->index(row, 0), model->index(row, 0));
+    }
+    to->select(selection, QItemSelectionModel::ClearAndSelect);
+
+    m_syncing_selection = false;
+}
+
+void ScreenshotsPage::setViewMode(InstanceViewMode mode)
+{
+    m_viewMode = mode;
+    APPLICATION->settings()->set("ScreenshotListViewMode", instanceViewModeToString(mode));
+
+    if (m_viewStack) {
+        m_viewStack->setCurrentWidget(mode == InstanceViewMode::Icons ? static_cast<QWidget*>(ui->listView)
+                                                                       : static_cast<QWidget*>(m_detailView));
+    }
+    if (m_actionListViewIcons && m_actionListViewDetails) {
+        m_actionListViewIcons->setChecked(mode == InstanceViewMode::Icons);
+        m_actionListViewDetails->setChecked(mode == InstanceViewMode::Details);
+    }
+    if (m_viewModeAction) {
+        m_viewModeAction->setIcon(QIcon::fromTheme(mode == InstanceViewMode::Icons ? QStringLiteral("view-list-icons")
+                                                                                   : QStringLiteral("view-list-tree")));
+    }
+    if (auto* view = currentView()) {
+        view->setFocus();
+    }
+}
+
+void ScreenshotsPage::setZoomLevel(int level, bool save)
+{
+    m_zoomLevel = qBound(ZoomLevelInfo::minimumLevel(), level, ZoomLevelInfo::maximumLevel());
+    const int iconSize = ZoomLevelInfo::iconSizeForZoomLevel(m_zoomLevel);
+
+    ui->listView->setIconSize(QSize(iconSize, iconSize));
+    ui->listView->setGridSize(QSize(iconSize + 64, iconSize + 32));
+    ui->listView->viewport()->update();
+
+    if (m_zoomSlider) {
+        m_zoomSlider->setZoomLevel(m_zoomLevel);
+    }
+
+    if (save) {
+        APPLICATION->settings()->set("ScreenshotIconZoomLevel", m_zoomLevel);
+    }
 }
 
 #include "ScreenshotsPage.moc"

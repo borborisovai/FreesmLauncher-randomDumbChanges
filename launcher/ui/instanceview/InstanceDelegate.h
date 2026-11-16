@@ -38,4 +38,14 @@ class ListViewDelegate : public QStyledItemDelegate {
 
    private slots:
     void editingDone();
+
+   public:
+    /// Change the icon size (in pixels); the cell width adapts to fit it (like Dolphin's zoom).
+    void setIconSize(int iconSize);
+    int iconSize() const { return m_iconSize; }
+    int itemWidth() const { return m_itemWidth; }
+
+   private:
+    int m_iconSize = 48;
+    int m_itemWidth = 100;
 };

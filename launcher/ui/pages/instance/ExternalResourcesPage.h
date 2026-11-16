@@ -13,6 +13,7 @@ class ResourceFolderModel;
 class QStackedWidget;
 class QListView;
 class QAction;
+class ZoomStatusSlider;
 
 namespace Ui {
 class ExternalResourcesPage;
@@ -52,6 +53,10 @@ class ExternalResourcesPage : public QMainWindow, public BasePage {
     /// switch between the table (details) and the icon grid (modeled after Dolphin's view mode switching);
     /// the mode is persisted globally in the ResourceListViewMode setting
     void setResourceViewMode(InstanceViewMode mode);
+
+    /// set the icon size level (0-16) of the icon grid (modeled after Dolphin's zoom);
+    /// persisted globally in the ResourceIconZoomLevel setting unless \a save is false
+    void setZoomLevel(int level, bool save = true);
 
    protected:
     /// the list view currently shown (table or icon grid)
@@ -95,6 +100,11 @@ class ExternalResourcesPage : public QMainWindow, public BasePage {
     QAction* m_actionListViewIcons = nullptr;
     QAction* m_actionListViewDetails = nullptr;
     QAction* m_viewModeAction = nullptr;
+    QAction* m_actionZoomIn = nullptr;
+    QAction* m_actionZoomOut = nullptr;
+    QAction* m_actionZoomReset = nullptr;
+    ZoomStatusSlider* m_zoomSlider = nullptr;
+    int m_zoomLevel = 4;
     /// re-entrancy guard for keeping the two views' selections in sync
     bool m_syncing_selection = false;
 

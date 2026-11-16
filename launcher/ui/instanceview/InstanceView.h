@@ -82,6 +82,11 @@ class InstanceView : public QAbstractItemView {
     int spacing() const { return m_spacing; };
     void setPaintCat(bool visible);
 
+    /// set the zoom level (0-16, modeled after Dolphin) which scales the icons and the items;
+    /// the default level 3 reproduces the classical 48px icon size
+    void setIconZoomLevel(int level);
+    int iconZoomLevel() const { return m_iconZoomLevel; }
+
    public slots:
     virtual void updateGeometries() override;
     void setPaintSnow(bool visible);
@@ -145,6 +150,7 @@ class InstanceView : public QAbstractItemView {
     int m_categoryMargin = 5;
     int m_spacing = 5;
     int m_itemWidth = 100;
+    int m_iconZoomLevel = 3;
     int m_currentItemsPerRow = -1;
     int m_currentCursorColumn = -1;
     mutable QCache<int, QRect> m_geometryCache;
