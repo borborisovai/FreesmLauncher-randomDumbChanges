@@ -20,8 +20,10 @@ RUNNER_ARCH="${RUNNER_ARCH:-X64}"
 # step environment variable, e.g. .../lib/cmake/Qt6).
 if [ -n "${Qt6_DIR:-}" ]; then
   QT_PREFIX="$(cd "$Qt6_DIR/../../.." && pwd)"
+elif [ -n "${QT_ROOT_DIR:-}" ]; then
+  QT_PREFIX="$QT_ROOT_DIR"
 else
-  echo "::error::Qt6_DIR is not set; the Qt setup step must run before this one" >&2
+  echo "::error::Neither Qt6_DIR nor QT_ROOT_DIR is set; the Qt setup step must run before this one" >&2
   exit 1
 fi
 echo "Qt6 prefix: $QT_PREFIX"
