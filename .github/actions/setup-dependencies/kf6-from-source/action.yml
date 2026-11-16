@@ -53,12 +53,12 @@ runs:
             # libudev (KSolid), libmount (KIO) and libcanberra (KNotifications)
             # are required from the system.
             sudo apt-get -y update
-            sudo apt-get -y install flex bison libudev-dev libmount-dev libcanberra-dev
+            sudo apt-get -y install flex bison libudev-dev libmount-dev libcanberra-dev gettext
             ;;
         esac
 
-    - name: Install gettext via vcpkg (Windows & macOS)
-      if: steps.cache.outputs.cache-hit != 'true' && runner.os != 'Linux'
+    - name: Install gettext via vcpkg (Windows)
+      if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'Windows'
       shell: bash
       run: |
         case "${{ runner.os }}-${{ runner.arch }}" in
