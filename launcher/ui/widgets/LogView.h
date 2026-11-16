@@ -19,13 +19,13 @@
 #pragma once
 
 #include <QAbstractItemModel>
+#include <QColor>
+#include <QFont>
 #include <QString>
 #include <QVector>
 #include <QWidget>
 
-class QColor;
 class QEvent;
-class QFont;
 
 namespace KTextEditor {
 class Document;
