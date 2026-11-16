@@ -138,7 +138,7 @@ void DataPackPage::updateDataPacks()
             return;
         }
     }
-    auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection()).indexes();
+    auto selection = m_filterModel->mapSelectionToSource(listSelectionModel()->selection()).indexes();
 
     auto modsList = m_model->selectedResources(selection);
     bool useAll = modsList.empty();
@@ -198,7 +198,7 @@ void DataPackPage::updateDataPacks()
 
 void DataPackPage::deleteDataPackMetadata()
 {
-    auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection()).indexes();
+    auto selection = m_filterModel->mapSelectionToSource(listSelectionModel()->selection()).indexes();
     auto selectionCount = m_model->selectedDataPacks(selection).length();
     if (selectionCount == 0) {
         return;
@@ -230,7 +230,7 @@ void DataPackPage::changeDataPackVersion()
         return;
     }
 
-    const QModelIndexList rows = ui->treeView->selectionModel()->selectedRows();
+    const QModelIndexList rows = listSelectionModel()->selectedRows();
 
     if (rows.count() != 1) {
         return;

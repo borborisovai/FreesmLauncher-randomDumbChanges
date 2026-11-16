@@ -6,9 +6,13 @@
 #include "Application.h"
 #include "minecraft/MinecraftInstance.h"
 #include "settings/Setting.h"
+#include "ui/instanceview/InstanceViewMode.h"
 #include "ui/pages/BasePage.h"
 
 class ResourceFolderModel;
+class QStackedWidget;
+class QListView;
+class QAction;
 
 namespace Ui {
 class ExternalResourcesPage;
@@ -45,6 +49,15 @@ class ExternalResourcesPage : public QMainWindow, public BasePage {
     virtual void updateActions();
     virtual void updateFrame(const QModelIndex& current, const QModelIndex& previous);
 
+    /// switch between the table (details) and the icon grid (modeled after Dolphin's view mode switching);
+    /// the mode is persisted globally in the ResourceListViewMode setting
+    void setResourceViewMode(InstanceViewMode mode);
+
+   protected:
+    /// the list view currently shown (table or icon grid)
+    QAbstractItemView* listView() const;
+    QItemSelectionModel* listSelectionModel() const;
+
    protected slots:
     void itemActivated(const QModelIndex& index);
     void filterTextChanged(const QString& newContents);
@@ -75,4 +88,17 @@ class ExternalResourcesPage : public QMainWindow, public BasePage {
     QString m_viewFilter;
 
     std::shared_ptr<Setting> m_wide_bar_setting = nullptr;
+
+    QStackedWidget* m_viewStack = nullptr;
+    QListView* m_iconView = nullptr;
+    InstanceViewMode m_resourceViewMode = InstanceViewMode::Details;
+    QAction* m_actionListViewIcons = nullptr;
+    QAction* m_actionListViewDetails = nullptr;
+    QAction* m_viewModeAction = nullptr;
+    /// re-entrancy guard for keeping the two views' selections in sync
+    bool m_syncing_selection = false;
+
+   private:
+    void syncListSelection(QItemSelectionModel* from, QItemSelectionModel* to);
+    void refreshExtraHeader();
 };

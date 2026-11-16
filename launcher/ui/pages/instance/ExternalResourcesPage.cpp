@@ -42,9 +42,17 @@
 #include "minecraft/mod/ResourceFolderModel.h"
 #include "ui/GuiUtil.h"
 
+#include "ui/instanceview/InstanceViewMode.h"
+#include "ui/widgets/ResourceIconDelegate.h"
+
+#include <QActionGroup>
 #include <QHeaderView>
+#include <QItemSelectionModel>
 #include <QKeyEvent>
+#include <QListView>
 #include <QMenu>
+#include <QStackedWidget>
+#include <QToolButton>
 #include <algorithm>
 
 ExternalResourcesPage::ExternalResourcesPage(BaseInstance* instance, ResourceFolderModel* model, QWidget* parent)
@@ -67,6 +75,77 @@ ExternalResourcesPage::ExternalResourcesPage(BaseInstance* instance, ResourceFol
     ui->treeView->installEventFilter(this);
     ui->treeView->sortByColumn(1, Qt::AscendingOrder);
     ui->treeView->setContextMenuPolicy(Qt::CustomContextMenu);
+
+    // Icon grid view, stacked with the table (modeled after Dolphin's view mode switching).
+    // Both views share the same filter model and keep their selections in sync.
+    m_iconView = new QListView(this);
+    m_iconView->setViewMode(QListView::IconMode);
+    m_iconView->setIconSize(QSize(56, 56));
+    m_iconView->setSpacing(6);
+    m_iconView->setResizeMode(QListView::Adjust);
+    m_iconView->setMovement(QListView::Static);
+    m_iconView->setUniformItemSizes(true);
+    m_iconView->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    m_iconView->setFrameShape(QFrame::NoFrame);
+    m_iconView->setAttribute(Qt::WA_MacShowFocusRect, false);
+    // dropping files onto the grid installs them, like dropping onto the table
+    m_iconView->setDragDropMode(QAbstractItemView::DropOnly);
+    m_iconView->setDropIndicatorShown(true);
+    m_iconView->viewport()->setAcceptDrops(true);
+    m_iconView->setItemDelegate(new ResourceIconDelegate(m_model->listViewImageColumn(), m_model->listViewNameColumn(), m_iconView));
+    m_iconView->setModel(m_filterModel);
+    m_iconView->installEventFilter(this);
+    m_iconView->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_iconView, &QWidget::customContextMenuRequested, this, &ExternalResourcesPage::ShowContextMenu);
+    connect(m_iconView, &QListView::activated, this, &ExternalResourcesPage::itemActivated);
+    connect(m_iconView->selectionModel(), &QItemSelectionModel::currentChanged, this,
+            [this](const QModelIndex& current, const QModelIndex& previous) {
+                if (!current.isValid()) {
+                    ui->frame->clear();
+                    return;
+                }
+                updateFrame(current, previous);
+            });
+    connect(m_iconView->selectionModel(), &QItemSelectionModel::selectionChanged, this, [this] { updateActions(); });
+
+    // stack the table and the grid; the grid layout cell is the one the treeView occupied
+    auto* layout = ui->gridLayout;
+    layout->removeWidget(ui->treeView);
+    m_viewStack = new QStackedWidget(this);
+    m_viewStack->addWidget(ui->treeView);
+    m_viewStack->addWidget(m_iconView);
+    layout->addWidget(m_viewStack, 1, 1, 1, 2);
+
+    // keep the selections of the two views in sync (same filter model, full rows in both)
+    connect(ui->treeView->selectionModel(), &QItemSelectionModel::selectionChanged, this,
+            [this] { syncListSelection(ui->treeView->selectionModel(), m_iconView->selectionModel()); });
+    connect(m_iconView->selectionModel(), &QItemSelectionModel::selectionChanged, this,
+            [this] { syncListSelection(m_iconView->selectionModel(), ui->treeView->selectionModel()); });
+
+    // view mode switcher, modeled after Dolphin's view_mode action; the mode is
+    // persisted globally in the ResourceListViewMode setting
+    m_actionListViewIcons = new QAction(QIcon::fromTheme(QStringLiteral("view-list-icons")), tr("Icons"), this);
+    m_actionListViewIcons->setCheckable(true);
+    m_actionListViewIcons->setToolTip(tr("Show items as a grid of icons"));
+    m_actionListViewDetails = new QAction(QIcon::fromTheme(QStringLiteral("view-list-tree")), tr("Details"), this);
+    m_actionListViewDetails->setCheckable(true);
+    m_actionListViewDetails->setToolTip(tr("Show items as a table"));
+    auto* viewModeGroup = new QActionGroup(this);
+    viewModeGroup->addAction(m_actionListViewIcons);
+    viewModeGroup->addAction(m_actionListViewDetails);
+    connect(m_actionListViewIcons, &QAction::triggered, this, [this] { setResourceViewMode(InstanceViewMode::Icons); });
+    connect(m_actionListViewDetails, &QAction::triggered, this, [this] { setResourceViewMode(InstanceViewMode::Details); });
+
+    auto* viewModeMenu = new QMenu(this);
+    viewModeMenu->addAction(m_actionListViewIcons);
+    viewModeMenu->addAction(m_actionListViewDetails);
+    m_viewModeAction = new QAction(QIcon::fromTheme(QStringLiteral("view-list-tree")), tr("View Mode"), this);
+    m_viewModeAction->setMenu(viewModeMenu);
+    m_viewModeAction->setToolTip(tr("Change view mode"));
+    ui->actionsToolbar->insertActionBefore(ui->actionAddItem, m_viewModeAction);
+    if (auto* button = qobject_cast<QToolButton*>(ui->actionsToolbar->widgetForAction(m_viewModeAction))) {
+        button->setPopupMode(QToolButton::InstantPopup);
+    }
 
     // The default function names by Qt are pretty ugly, so let's just connect the actions manually,
     // to make it easier to read :)
@@ -92,12 +171,10 @@ ExternalResourcesPage::ExternalResourcesPage(BaseInstance* instance, ResourceFol
         updateFrame(current, previous);
     });
 
-    auto updateExtra = [this]() {
-        if (updateExtraInfo)
-            updateExtraInfo(id(), extraHeaderInfoString());
-    };
+    auto updateExtra = [this] { refreshExtraHeader(); };
 
     connect(selection_model, &QItemSelectionModel::selectionChanged, this, updateExtra);
+    connect(m_iconView->selectionModel(), &QItemSelectionModel::selectionChanged, this, updateExtra);
     connect(model, &ResourceFolderModel::updateFinished, this, updateExtra);
     connect(model, &ResourceFolderModel::parseFinished, this, updateExtra);
 
@@ -114,6 +191,9 @@ ExternalResourcesPage::ExternalResourcesPage(BaseInstance* instance, ResourceFol
     connect(ui->treeView->header(), &QHeaderView::sectionResized, this, [this] { m_model->saveColumns(ui->treeView); });
     connect(ui->filterEdit, &QLineEdit::textChanged, this, &ExternalResourcesPage::filterTextChanged);
     updateActions();
+
+    // apply the saved view mode (table or icon grid)
+    setResourceViewMode(instanceViewModeFromString(APPLICATION->settings()->get("ResourceListViewMode").toString()));
 }
 
 ExternalResourcesPage::~ExternalResourcesPage()
@@ -130,8 +210,23 @@ QMenu* ExternalResourcesPage::createPopupMenu()
 
 void ExternalResourcesPage::ShowContextMenu(const QPoint& pos)
 {
+    // the context menu is shared between the table view and the icon grid view
+    auto* senderWidget = qobject_cast<QWidget*>(sender());
+    if (!senderWidget) {
+        senderWidget = ui->treeView;
+    }
+    // right-clicking an item selects it first, so the menu actions apply to the clicked item
+    if (auto* view = qobject_cast<QAbstractItemView*>(senderWidget)) {
+        const QPoint viewportPos = view->viewport()->mapFrom(view, pos);
+        if (const QModelIndex index = view->indexAt(viewportPos); index.isValid() && m_filterModel) {
+            const int colCount = m_filterModel->columnCount();
+            const QItemSelection rowSelection(m_filterModel->index(index.row(), 0), m_filterModel->index(index.row(), colCount - 1));
+            view->selectionModel()->select(rowSelection, QItemSelectionModel::ClearAndSelect);
+            view->setCurrentIndex(index);
+        }
+    }
     auto menu = ui->actionsToolbar->createContextMenu(this, tr("Context menu"));
-    menu->exec(ui->treeView->mapToGlobal(pos));
+    menu->exec(senderWidget->mapToGlobal(pos));
     delete menu;
 }
 
@@ -162,11 +257,20 @@ void ExternalResourcesPage::closedImpl()
 void ExternalResourcesPage::retranslate()
 {
     ui->retranslateUi(this);
+
+    if (m_actionListViewIcons && m_actionListViewDetails && m_viewModeAction) {
+        m_actionListViewIcons->setText(tr("Icons"));
+        m_actionListViewIcons->setToolTip(tr("Show items as a grid of icons"));
+        m_actionListViewDetails->setText(tr("Details"));
+        m_actionListViewDetails->setToolTip(tr("Show items as a table"));
+        m_viewModeAction->setText(tr("View Mode"));
+        m_viewModeAction->setToolTip(tr("Change view mode"));
+    }
 }
 
 void ExternalResourcesPage::itemActivated(const QModelIndex&)
 {
-    auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection());
+    auto selection = m_filterModel->mapSelectionToSource(listSelectionModel()->selection());
     m_model->setResourceEnabled(selection.indexes(), EnableAction::TOGGLE);
 }
 
@@ -193,7 +297,7 @@ bool ExternalResourcesPage::listFilter(QKeyEvent* keyEvent)
         default:
             break;
     }
-    return QWidget::eventFilter(ui->treeView, keyEvent);
+    return false;  // let the key press be handled normally
 }
 
 bool ExternalResourcesPage::eventFilter(QObject* obj, QEvent* ev)
@@ -202,7 +306,7 @@ bool ExternalResourcesPage::eventFilter(QObject* obj, QEvent* ev)
         return QWidget::eventFilter(obj, ev);
 
     QKeyEvent* keyEvent = static_cast<QKeyEvent*>(ev);
-    if (obj == ui->treeView)
+    if (obj == ui->treeView || obj == m_iconView)
         return listFilter(keyEvent);
 
     return QWidget::eventFilter(obj, ev);
@@ -223,7 +327,7 @@ void ExternalResourcesPage::addItem()
 
 void ExternalResourcesPage::removeItem()
 {
-    auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection());
+    auto selection = m_filterModel->mapSelectionToSource(listSelectionModel()->selection());
 
     int count = 0;
     bool folder = false;
@@ -281,19 +385,19 @@ void ExternalResourcesPage::removeItems(const QItemSelection& selection)
 
 void ExternalResourcesPage::enableItem()
 {
-    auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection());
+    auto selection = m_filterModel->mapSelectionToSource(listSelectionModel()->selection());
     m_model->setResourceEnabled(selection.indexes(), EnableAction::ENABLE);
 }
 
 void ExternalResourcesPage::disableItem()
 {
-    auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection());
+    auto selection = m_filterModel->mapSelectionToSource(listSelectionModel()->selection());
     m_model->setResourceEnabled(selection.indexes(), EnableAction::DISABLE);
 }
 
 void ExternalResourcesPage::viewHomepage()
 {
-    auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection()).indexes();
+    auto selection = m_filterModel->mapSelectionToSource(listSelectionModel()->selection()).indexes();
     for (auto resource : m_model->selectedResources(selection)) {
         auto url = resource->homepage();
         if (!url.isEmpty())
@@ -313,8 +417,8 @@ void ExternalResourcesPage::viewFolder()
 
 void ExternalResourcesPage::updateActions()
 {
-    const bool hasSelection = ui->treeView->selectionModel()->hasSelection();
-    const QModelIndexList selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection()).indexes();
+    const bool hasSelection = listSelectionModel() && listSelectionModel()->hasSelection();
+    const QModelIndexList selection = m_filterModel->mapSelectionToSource(listSelectionModel()->selection()).indexes();
     const QList<Resource*> selectedResources = m_model->selectedResources(selection);
 
     ui->actionUpdateItem->setEnabled(!m_model->empty());
@@ -341,10 +445,77 @@ void ExternalResourcesPage::updateFrame(const QModelIndex& current, [[maybe_unus
 
 QString ExternalResourcesPage::extraHeaderInfoString()
 {
-    if (ui && ui->treeView && ui->treeView->selectionModel()) {
-        auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection()).indexes();
+    if (listView() && listView()->selectionModel()) {
+        auto selection = m_filterModel->mapSelectionToSource(listSelectionModel()->selection()).indexes();
         if (auto count = std::count_if(selection.cbegin(), selection.cend(), [](auto v) { return v.column() == 0; }); count != 0)
             return tr(" (%1 installed, %2 selected)").arg(m_model->size()).arg(count);
     }
     return tr(" (%1 installed)").arg(m_model->size());
+}
+
+QAbstractItemView* ExternalResourcesPage::listView() const
+{
+    if (m_resourceViewMode == InstanceViewMode::Icons && m_iconView) {
+        return m_iconView;
+    }
+    return ui->treeView;
+}
+
+QItemSelectionModel* ExternalResourcesPage::listSelectionModel() const
+{
+    auto* view = listView();
+    return view ? view->selectionModel() : nullptr;
+}
+
+void ExternalResourcesPage::setResourceViewMode(InstanceViewMode mode)
+{
+    m_resourceViewMode = mode;
+    APPLICATION->settings()->set("ResourceListViewMode", instanceViewModeToString(mode));
+
+    if (m_viewStack) {
+        m_viewStack->setCurrentWidget(mode == InstanceViewMode::Icons ? static_cast<QWidget*>(m_iconView)
+                                                                       : static_cast<QWidget*>(ui->treeView));
+    }
+    if (m_actionListViewIcons && m_actionListViewDetails) {
+        m_actionListViewIcons->setChecked(mode == InstanceViewMode::Icons);
+        m_actionListViewDetails->setChecked(mode == InstanceViewMode::Details);
+    }
+    if (m_viewModeAction) {
+        m_viewModeAction->setIcon(QIcon::fromTheme(mode == InstanceViewMode::Icons ? QStringLiteral("view-list-icons")
+                                                                                   : QStringLiteral("view-list-tree")));
+    }
+    if (auto* view = listView()) {
+        view->setFocus();
+    }
+}
+
+void ExternalResourcesPage::syncListSelection(QItemSelectionModel* from, QItemSelectionModel* to)
+{
+    if (m_syncing_selection || !from || !to || !m_filterModel) {
+        return;
+    }
+    m_syncing_selection = true;
+
+    // collect the unique rows of the current selection and re-select them as full rows
+    QList<int> rows;
+    const int colCount = m_filterModel->columnCount();
+    for (const QModelIndex& index : from->selection().indexes()) {
+        if (!rows.contains(index.row())) {
+            rows.append(index.row());
+        }
+    }
+    QItemSelection selection;
+    for (int row : rows) {
+        selection.select(m_filterModel->index(row, 0), m_filterModel->index(row, colCount - 1));
+    }
+    to->select(selection, QItemSelectionModel::ClearAndSelect);
+
+    m_syncing_selection = false;
+}
+
+void ExternalResourcesPage::refreshExtraHeader()
+{
+    if (updateExtraInfo) {
+        updateExtraInfo(id(), extraHeaderInfoString());
+    }
 }

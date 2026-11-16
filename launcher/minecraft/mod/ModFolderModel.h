@@ -59,6 +59,8 @@ class QFileSystemWatcher;
 class ModFolderModel : public ResourceFolderModel {
     Q_OBJECT
    public:
+    int listViewImageColumn() const override { return ImageColumn; }
+    int listViewNameColumn() const override { return NameColumn; }
     enum Columns {
         ActiveColumn = 0,
         ImageColumn,

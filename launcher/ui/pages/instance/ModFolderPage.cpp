@@ -245,7 +245,7 @@ void ModFolderPage::updateMods(bool includeDeps)
             return;
         }
     }
-    auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection()).indexes();
+    auto selection = m_filterModel->mapSelectionToSource(listSelectionModel()->selection()).indexes();
 
     auto modsList = m_model->selectedResources(selection);
     bool useAll = modsList.empty();
@@ -305,7 +305,7 @@ void ModFolderPage::updateMods(bool includeDeps)
 
 void ModFolderPage::deleteModMetadata()
 {
-    auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection()).indexes();
+    auto selection = m_filterModel->mapSelectionToSource(listSelectionModel()->selection()).indexes();
     auto selectionCount = m_model->selectedMods(selection).length();
     if (selectionCount == 0) {
         return;
@@ -340,7 +340,7 @@ void ModFolderPage::changeModVersion()
         QMessageBox::critical(this, tr("Error"), tr("Mod updates are unavailable when metadata is disabled!"));
         return;
     }
-    auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection()).indexes();
+    auto selection = m_filterModel->mapSelectionToSource(listSelectionModel()->selection()).indexes();
     auto modsList = m_model->selectedMods(selection);
     if (modsList.length() != 1 || modsList[0]->metadata() == nullptr) {
         return;
@@ -356,7 +356,7 @@ void ModFolderPage::changeModVersion()
 
 void ModFolderPage::exportModMetadata()
 {
-    auto selection = m_filterModel->mapSelectionToSource(ui->treeView->selectionModel()->selection()).indexes();
+    auto selection = m_filterModel->mapSelectionToSource(listSelectionModel()->selection()).indexes();
     auto selectedMods = m_model->selectedMods(selection);
     if (selectedMods.length() == 0) {
         selectedMods = m_model->allMods();
