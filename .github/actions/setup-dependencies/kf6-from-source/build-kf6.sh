@@ -29,10 +29,15 @@ fi
 echo "Qt6 prefix: $QT_PREFIX"
 
 # Extra prefixes the KF6 build should see (e.g. gettext/libintl from vcpkg).
+case "$RUNNER_OS-$RUNNER_ARCH" in
+  Windows-X64)   VCPKG_TRIPLET="x64-windows" ;;
+  Windows-ARM64) VCPKG_TRIPLET="arm64-windows" ;;
+  Darwin-*)      VCPKG_TRIPLET="universal-osx" ;;
+  *)             VCPKG_TRIPLET="" ;;
+esac
 EXTRA_PREFIX=""
-if [ -d "$GITHUB_WORKSPACE/vcpkg_installed" ]; then
-  TRIPLET_DIR="$(ls -d "$GITHUB_WORKSPACE"/vcpkg_installed/*/ | head -n 1)"
-  EXTRA_PREFIX="${TRIPLET_DIR%/}"
+if [ -n "$VCPKG_TRIPLET" ] && [ -d "$GITHUB_WORKSPACE/vcpkg_installed/$VCPKG_TRIPLET" ]; then
+  EXTRA_PREFIX="$GITHUB_WORKSPACE/vcpkg_installed/$VCPKG_TRIPLET"
 fi
 if [ -n "$EXTRA_PREFIX" ]; then
   echo "Extra prefix: $EXTRA_PREFIX"
@@ -49,7 +54,7 @@ if [ "$RUNNER_OS" = "Windows" ]; then
   fi
 fi
 
-CONFIG_ARGS=(-DCMAKE_INSTALL_PREFIX="$PREFIX" -DBUILD_TESTING=OFF -DWITH_WAYLAND=OFF -DWITH_X11=OFF)
+CONFIG_ARGS=(-DCMAKE_INSTALL_PREFIX="$PREFIX" -DBUILD_TESTING=OFF -DWITH_WAYLAND=OFF -DWITH_X11=OFF -DBUILD_PYTHON_BINDINGS=OFF)
 if [ "$RUNNER_OS" = "Darwin" ]; then
   CONFIG_ARGS+=(-DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_OSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-12.0}")
 fi
@@ -68,11 +73,14 @@ if [ "$RUNNER_OS" = "Windows" ]; then
     choco install strawberryperl -y --no-progress
   fi
   if ! command -v bison >/dev/null 2>&1 && ! command -v win_bison >/dev/null 2>&1; then
-    choco install winflexbison -y --no-progress
+    # winflexbison3 ships win_flex_bison 2.5.x (Flex 2.5.x / Bison 3.x);
+    # the legacy "winflexbison" package ships Flex/Bison 2.4.9, which is too old
+    choco install winflexbison3 -y --no-progress || choco install winflexbison -y --no-progress
   fi
   FLEX_EXECUTABLE="$(command -v flex || command -v win_flex || true)"
   BISON_EXECUTABLE="$(command -v bison || command -v win_bison || true)"
   echo "flex: $FLEX_EXECUTABLE, bison: $BISON_EXECUTABLE"
+  "$BISON_EXECUTABLE" --version | head -1 || true
   [ -n "$FLEX_EXECUTABLE" ] && CONFIG_ARGS+=(-DFLEX_EXECUTABLE="$FLEX_EXECUTABLE")
   [ -n "$BISON_EXECUTABLE" ] && CONFIG_ARGS+=(-DBISON_EXECUTABLE="$BISON_EXECUTABLE")
 elif [ "$RUNNER_OS" = "Darwin" ]; then
@@ -155,6 +163,7 @@ EXTRA_ARGS+=(-DSONNET_NO_BACKENDS=ON)
 for name in "${ORDER[@]}"; do
   case "$name" in
     kiconthemes|sonnet) build_one "$name" "${EXTRA_ARGS[@]}" ;;
+    karchive) build_one "$name" -DWITH_BZIP2=OFF -DWITH_LIBLZMA=OFF -DWITH_OPENSSL=OFF -DWITH_LIBZSTD=OFF ;;
     *) build_one "$name" ;;
   esac
 done
