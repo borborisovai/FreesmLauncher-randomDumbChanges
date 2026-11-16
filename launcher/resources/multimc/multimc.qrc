@@ -190,6 +190,9 @@
 
         <!-- View folder. CC-BY-SA 3.0, http://openiconlibrary.sourceforge.net/gallery2/?./Icons/actions/document-open-folder.png -->
         <file>scalable/viewfolder.svg</file>
+        <!-- View mode icons for the instance list (grid / details table) -->
+        <file>scalable/view-list-icons.svg</file>
+        <file>scalable/view-list-tree.svg</file>
         <file>16x16/viewfolder.png</file>
         <file>22x22/viewfolder.png</file>
         <file>32x32/viewfolder.png</file>

@@ -46,6 +46,7 @@
 #include "BaseInstance.h"
 #include "InstanceList.h"
 #include "InstanceView.h"
+#include "InstanceStatusPainter.h"
 
 // Origin: Qt
 static void viewItemTextLayout(QTextLayout& textLayout, int lineWidth, qreal& height, qreal& widthUsed)
@@ -102,61 +103,6 @@ void drawFocusRect(QPainter* painter, const QStyleOptionViewItem& option, const 
     style->drawPrimitive(QStyle::PE_FrameFocusRect, &opt, painter, option.widget);
 
     painter->setRenderHint(QPainter::Antialiasing);
-}
-
-// TODO this can be made a lot prettier
-void drawProgressOverlay(QPainter* painter, const QStyleOptionViewItem& option, const int value, const int maximum)
-{
-    if (maximum == 0 || value == maximum) {
-        return;
-    }
-
-    painter->save();
-
-    qreal percent = (qreal)value / (qreal)maximum;
-    QColor color = option.palette.color(QPalette::Dark);
-    color.setAlphaF(0.70f);
-    painter->setBrush(color);
-    painter->setPen(QPen(QBrush(), 0));
-    painter->drawPie(option.rect, 90 * 16, -percent * 360 * 16);
-
-    painter->restore();
-}
-
-void drawBadges(QPainter* painter, const QStyleOptionViewItem& option, BaseInstance* instance, QIcon::Mode mode, QIcon::State state)
-{
-    QList<QString> pixmaps;
-    if (instance->isRunning()) {
-        pixmaps.append("status-running");
-    } else if (instance->hasCrashed() || instance->hasVersionBroken()) {
-        pixmaps.append("status-bad");
-    }
-    if (instance->hasUpdateAvailable()) {
-        pixmaps.append("checkupdate");
-    }
-
-    static const int itemSide = 24;
-    static const int spacing = 1;
-    const int itemsPerRow = qMax(1, qFloor(double(option.rect.width() + spacing) / double(itemSide + spacing)));
-    const int rows = qCeil((double)pixmaps.size() / (double)itemsPerRow);
-    QListIterator<QString> it(pixmaps);
-    painter->translate(option.rect.topLeft());
-    for (int y = 0; y < rows; ++y) {
-        for (int x = 0; x < itemsPerRow; ++x) {
-            if (!it.hasNext()) {
-                return;
-            }
-            // FIXME: inject this.
-            auto icon = QIcon::fromTheme(it.next());
-            // opt.icon.paint(painter, iconbox, Qt::AlignCenter, mode, state);
-            const QPixmap pixmap;
-            // itemSide
-            QRect badgeRect(option.rect.width() - x * itemSide + qMax(x - 1, 0) * spacing - itemSide,
-                            y * itemSide + qMax(y - 1, 0) * spacing, itemSide, itemSide);
-            icon.paint(painter, badgeRect, Qt::AlignCenter, mode, state);
-        }
-    }
-    painter->translate(-option.rect.topLeft());
 }
 
 static QSize viewItemTextSize(const QStyleOptionViewItem* option)
@@ -310,11 +256,11 @@ void ListViewDelegate::paint(QPainter* painter, const QStyleOptionViewItem& opti
     // FIXME: this really has no business of being here. Make generic.
     auto instance = (BaseInstance*)index.data(InstanceList::InstancePointerRole).value<void*>();
     if (instance) {
-        drawBadges(painter, opt, instance, mode, state);
+        drawStatusBadges(painter, opt.rect, instance, mode, state);
     }
 
-    drawProgressOverlay(painter, opt, index.data(InstanceViewRoles::ProgressValueRole).toInt(),
-                        index.data(InstanceViewRoles::ProgressMaximumRole).toInt());
+    drawProgressOverlay(painter, opt.rect, opt.palette, index.data(InstanceViewRoles::ProgressValueRole).toInt(),
+                    index.data(InstanceViewRoles::ProgressMaximumRole).toInt());
 
     painter->restore();
 }

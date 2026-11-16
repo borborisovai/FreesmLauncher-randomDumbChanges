@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-FileCopyrightText: 2026 FreesmLauncher Contributors
+     SPDX-License-Identifier: GPL-3.0-or-later
+     Details (table) view mode icon for the instance list -->
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="cell" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b3d9ff"/>
+      <stop offset="0.5" stop-color="#7db4e8"/>
+      <stop offset="1" stop-color="#508ed9"/>
+    </linearGradient>
+  </defs>
+  <g fill="url(#cell)" stroke="#31567e" stroke-width="0.7">
+    <rect x="2.6" y="3.4" width="4.6" height="4.6" rx="1.1"/>
+    <rect x="2.6" y="9.7" width="4.6" height="4.6" rx="1.1"/>
+    <rect x="2.6" y="16.0" width="4.6" height="4.6" rx="1.1"/>
+    <rect x="9.8" y="4.5" width="11.6" height="2.5" rx="1.25"/>
+    <rect x="9.8" y="10.8" width="11.6" height="2.5" rx="1.25"/>
+    <rect x="9.8" y="17.1" width="11.6" height="2.5" rx="1.25"/>
+  </g>
+</svg>

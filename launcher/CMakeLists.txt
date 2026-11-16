@@ -1231,6 +1231,14 @@ SET(LAUNCHER_SOURCES
     # GUI - instance group view
     ui/instanceview/InstanceProxyModel.cpp
     ui/instanceview/InstanceProxyModel.h
+    ui/instanceview/InstanceViewMode.h
+    ui/instanceview/InstanceStatusPainter.h
+    ui/instanceview/InstanceDetailsModel.cpp
+    ui/instanceview/InstanceDetailsModel.h
+    ui/instanceview/InstanceDetailsView.cpp
+    ui/instanceview/InstanceDetailsView.h
+    ui/instanceview/InstanceDetailsDelegate.cpp
+    ui/instanceview/InstanceDetailsDelegate.h
     ui/instanceview/AccessibleInstanceView.cpp
     ui/instanceview/AccessibleInstanceView.h
     ui/instanceview/AccessibleInstanceView_p.h

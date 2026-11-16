@@ -29,6 +29,7 @@ class InstanceProxyModel : public QSortFilterProxyModel {
     bool lessThan(const QModelIndex& left, const QModelIndex& right) const override;
     bool subSortLessThan(const QModelIndex& left, const QModelIndex& right) const;
 
-   private:
+   protected:
+    /// natural sort collator, shared with derived models
     QCollator m_naturalSort;
 };
