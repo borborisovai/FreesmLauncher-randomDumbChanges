@@ -1,7 +1,7 @@
-// NOTE: plain JS so it loads with any commitlint version, no TS syntax
+// NOTE: plain CommonJS so it loads with any commitlint version, no TS syntax
 const Severity = { Warning: 1, Error: 2 };
 
-export default {
+module.exports = {
 	parserPreset: 'conventional-changelog-conventionalcommits',
 	rules: {
 		'body-leading-blank': [Severity.Warning, 'always'],
