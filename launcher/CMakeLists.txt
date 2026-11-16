@@ -1204,6 +1204,8 @@ SET(LAUNCHER_SOURCES
     ui/widgets/ModListView.h
     ui/widgets/ResourceIconDelegate.cpp
     ui/widgets/ResourceIconDelegate.h
+    ui/widgets/ZoomSlider.cpp
+    ui/widgets/ZoomSlider.h
     ui/widgets/PageContainer.cpp
     ui/widgets/PageContainer.h
     ui/widgets/PageContainer_p.h

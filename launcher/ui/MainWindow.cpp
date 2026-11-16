@@ -114,6 +114,7 @@
 #include "ui/instanceview/InstanceDetailsView.h"
 #include "ui/instanceview/InstanceView.h"
 #include "ui/instanceview/InstanceViewMode.h"
+#include "ui/widgets/ZoomSlider.h"
 #include "ui/themes/ITheme.h"
 #include "ui/themes/ThemeManager.h"
 #include "ui/widgets/LabeledToolButton.h"
@@ -305,6 +306,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
         view->setSelectionMode(QAbstractItemView::SingleSelection);
         // FIXME: leaks ListViewDelegate
         auto delegate = new ListViewDelegate(this);
+        m_instDelegate = delegate;
         view->setItemDelegate(delegate);
         view->setFrameShape(QFrame::NoFrame);
         // do not show ugly blue border on the mac
@@ -426,6 +428,27 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
             viewModeButton->setPopupMode(QToolButton::InstantPopup);
         }
     }
+
+    // Zoom actions (modeled after Dolphin's zoom_in/zoom_out actions with Ctrl++/Ctrl+-/Ctrl+0 shortcuts);
+    // the slider itself lives in the status bar, like Dolphin's zoom slider
+    {
+        const auto zoomActions = createZoomToolbarActions(this);
+        m_actionZoomIn = zoomActions.zoomIn;
+        m_actionZoomOut = zoomActions.zoomOut;
+        m_actionZoomReset = zoomActions.zoomReset;
+        connect(m_actionZoomIn, &QAction::triggered, this, [this] { setInstanceIconZoomLevel(m_instIconZoomLevel + 1); });
+        connect(m_actionZoomOut, &QAction::triggered, this, [this] { setInstanceIconZoomLevel(m_instIconZoomLevel - 1); });
+        connect(m_actionZoomReset, &QAction::triggered, this, [this] { setInstanceIconZoomLevel(3); });
+
+        ui->mainToolBar->insertAction(ui->actionCAT, m_actionZoomOut);
+        ui->mainToolBar->insertAction(ui->actionCAT, m_actionZoomIn);
+        this->addAction(m_actionZoomReset);  // shortcut-only action, no toolbar button
+
+        // also add the actions to the View menu
+        ui->viewMenu->insertAction(ui->actionCAT, m_actionZoomReset);
+        ui->viewMenu->insertAction(ui->actionCAT, m_actionZoomIn);
+        ui->viewMenu->insertAction(ui->actionCAT, m_actionZoomOut);
+    }
     // The cat background
     {
         // set the cat action priority here so you can still see the action in qt designer
@@ -475,6 +498,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
     statusBar()->addPermanentWidget(m_statusLeft, 1);
     statusBar()->addPermanentWidget(m_statusCenter, 0);
 
+    // zoom slider for the instance icon grid (Dolphin's zoom slider in the status bar)
+    m_zoomSlider = new ZoomStatusSlider(this);
+    connect(m_zoomSlider, &ZoomStatusSlider::zoomLevelChanged, this, [this](int level) { setInstanceIconZoomLevel(level); });
+    statusBar()->addPermanentWidget(m_zoomSlider);
+
     // Add "manage accounts" button, right align
     QWidget* spacer = new QWidget();
     spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -521,6 +549,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
 
     // apply the saved view mode (icons or details)
     setInstanceViewMode(instanceViewModeFromString(APPLICATION->settings()->get("InstViewMode").toString()));
+
+    // apply the saved zoom level of the instance icon grid (persisted globally in the InstIconZoomLevel setting)
+    setInstanceIconZoomLevel(APPLICATION->settings()->get("InstIconZoomLevel").toInt(), /*save=*/false);
 
     setSelectedInstanceById(APPLICATION->settings()->get("SelectedInstance").toString());
 
@@ -1519,6 +1550,26 @@ void MainWindow::setInstanceViewMode(InstanceViewMode mode)
     }
     if (auto* instanceView = currentInstanceView()) {
         instanceView->setFocus();
+    }
+}
+
+void MainWindow::setInstanceIconZoomLevel(int level, bool save)
+{
+    m_instIconZoomLevel = qBound(ZoomLevelInfo::minimumLevel(), level, ZoomLevelInfo::maximumLevel());
+    const int iconSize = ZoomLevelInfo::iconSizeForZoomLevel(m_instIconZoomLevel);
+
+    if (m_instDelegate) {
+        m_instDelegate->setIconSize(iconSize);
+    }
+    if (view) {
+        view->setIconZoomLevel(m_instIconZoomLevel);
+    }
+    if (m_zoomSlider) {
+        m_zoomSlider->setZoomLevel(m_instIconZoomLevel);
+    }
+
+    if (save) {
+        APPLICATION->settings()->set("InstIconZoomLevel", m_instIconZoomLevel);
     }
 }
 

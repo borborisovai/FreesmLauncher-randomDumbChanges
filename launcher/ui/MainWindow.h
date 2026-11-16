@@ -245,12 +245,16 @@ class MainWindow : public QMainWindow {
 
     void runModalTask(Task* task);
     void instanceFromInstanceTask(InstanceTask* task);
+    /// set the zoom level (0-16, modeled after Dolphin) of the instance icon grid;
+    /// persisted globally in the InstIconZoomLevel setting unless \a save is false
+    void setInstanceIconZoomLevel(int level, bool save = true);
 
    private:
     Ui::MainWindow* ui;
     // these are managed by Qt's memory management model!
     QStackedWidget* viewStack = nullptr;
     InstanceView* view = nullptr;
+    class ListViewDelegate* m_instDelegate = nullptr;
     InstanceDetailsView* detailsView = nullptr;
     InstanceProxyModel* proxymodel = nullptr;
     InstanceDetailsModel* detailsProxyModel = nullptr;
@@ -258,6 +262,11 @@ class MainWindow : public QMainWindow {
     QAction* m_actionIconsViewMode = nullptr;
     QAction* m_actionDetailsViewMode = nullptr;
     QAction* m_viewModeAction = nullptr;
+    QAction* m_actionZoomIn = nullptr;
+    QAction* m_actionZoomOut = nullptr;
+    QAction* m_actionZoomReset = nullptr;
+    class ZoomStatusSlider* m_zoomSlider = nullptr;
+    int m_instIconZoomLevel = 3;
     QToolButton* newsLabel = nullptr;
     QLabel* m_statusLeft = nullptr;
     QLabel* m_statusCenter = nullptr;

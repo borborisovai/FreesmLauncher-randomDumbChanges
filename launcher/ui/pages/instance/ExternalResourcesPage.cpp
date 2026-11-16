@@ -52,6 +52,9 @@
 #include <QListView>
 #include <QMenu>
 #include <QStackedWidget>
+#include <QStatusBar>
+
+#include "ui/widgets/ZoomSlider.h"
 #include <QToolButton>
 #include <algorithm>
 
@@ -92,7 +95,7 @@ ExternalResourcesPage::ExternalResourcesPage(BaseInstance* instance, ResourceFol
     m_iconView->setDragDropMode(QAbstractItemView::DropOnly);
     m_iconView->setDropIndicatorShown(true);
     m_iconView->viewport()->setAcceptDrops(true);
-    m_iconView->setItemDelegate(new ResourceIconDelegate(m_model->listViewImageColumn(), m_model->listViewNameColumn(), m_iconView));
+    m_iconView->setItemDelegate(new ResourceIconDelegate(m_model->listViewImageColumn(), m_model->listViewNameColumn(), m_iconView, 0, m_model->listViewNameColumn()));
     m_iconView->setModel(m_filterModel);
     m_iconView->installEventFilter(this);
     m_iconView->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -147,6 +150,25 @@ ExternalResourcesPage::ExternalResourcesPage(BaseInstance* instance, ResourceFol
         button->setPopupMode(QToolButton::InstantPopup);
     }
 
+    // zoom actions, modeled after Dolphin's zoom_in/zoom_out actions (Ctrl++/Ctrl+-/Ctrl+0);
+    // the slider itself lives in the status bar, like Dolphin's zoom slider
+    const auto zoomActions = createZoomToolbarActions(this);
+    m_actionZoomIn = zoomActions.zoomIn;
+    m_actionZoomOut = zoomActions.zoomOut;
+    m_actionZoomReset = zoomActions.zoomReset;
+    connect(m_actionZoomIn, &QAction::triggered, this, [this] { setZoomLevel(m_zoomLevel + 1); });
+    connect(m_actionZoomOut, &QAction::triggered, this, [this] { setZoomLevel(m_zoomLevel - 1); });
+    connect(m_actionZoomReset, &QAction::triggered, this, [this] { setZoomLevel(4); });
+    ui->actionsToolbar->insertActionBefore(m_viewModeAction, m_actionZoomOut);
+    ui->actionsToolbar->insertActionBefore(m_viewModeAction, m_actionZoomIn);
+    this->addAction(m_actionZoomReset);  // widget-level, shortcut-only action (no toolbar button)
+
+    auto* zoomSlider = new ZoomStatusSlider(this);
+    m_zoomSlider = zoomSlider;
+    connect(zoomSlider, &ZoomStatusSlider::zoomLevelChanged, this, &ExternalResourcesPage::setZoomLevel);
+    setStatusBar(new QStatusBar(this));
+    statusBar()->addPermanentWidget(zoomSlider);
+
     // The default function names by Qt are pretty ugly, so let's just connect the actions manually,
     // to make it easier to read :)
     connect(ui->actionAddItem, &QAction::triggered, this, &ExternalResourcesPage::addItem);
@@ -194,6 +216,9 @@ ExternalResourcesPage::ExternalResourcesPage(BaseInstance* instance, ResourceFol
 
     // apply the saved view mode (table or icon grid)
     setResourceViewMode(instanceViewModeFromString(APPLICATION->settings()->get("ResourceListViewMode").toString()));
+
+    // apply the saved zoom level of the icon grid (persisted globally in the ResourceIconZoomLevel setting)
+    setZoomLevel(APPLICATION->settings()->get("ResourceIconZoomLevel").toInt(), /*save=*/false);
 }
 
 ExternalResourcesPage::~ExternalResourcesPage()
@@ -465,6 +490,28 @@ QItemSelectionModel* ExternalResourcesPage::listSelectionModel() const
 {
     auto* view = listView();
     return view ? view->selectionModel() : nullptr;
+}
+
+void ExternalResourcesPage::setZoomLevel(int level, bool save)
+{
+    m_zoomLevel = qBound(ZoomLevelInfo::minimumLevel(), level, ZoomLevelInfo::maximumLevel());
+    const int iconSize = ZoomLevelInfo::iconSizeForZoomLevel(m_zoomLevel);
+
+    if (auto* delegate = qobject_cast<ResourceIconDelegate*>(m_iconView ? m_iconView->itemDelegate() : nullptr)) {
+        delegate->setIconSize(iconSize);
+    }
+    if (m_iconView) {
+        m_iconView->setIconSize(QSize(iconSize, iconSize));
+        m_iconView->setGridSize(QSize(iconSize + 48, iconSize + 44));
+        m_iconView->viewport()->update();
+    }
+    if (m_zoomSlider) {
+        m_zoomSlider->setZoomLevel(m_zoomLevel);
+    }
+
+    if (save) {
+        APPLICATION->settings()->set("ResourceIconZoomLevel", m_zoomLevel);
+    }
 }
 
 void ExternalResourcesPage::setResourceViewMode(InstanceViewMode mode)

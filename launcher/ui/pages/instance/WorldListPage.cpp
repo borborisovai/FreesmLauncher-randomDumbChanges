@@ -41,6 +41,7 @@
 #include "ui_WorldListPage.h"
 
 #include <ui/widgets/PageContainer.h>
+#include <QActionGroup>
 #include <QClipboard>
 #include <QDialogButtonBox>
 #include <QEvent>
@@ -50,6 +51,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSortFilterProxyModel>
+#include <QItemSelectionModel>
 #include <QTreeView>
 #include <Qt>
 
@@ -58,6 +60,13 @@
 
 #include "DesktopServices.h"
 #include "ui/GuiUtil.h"
+#include <QListView>
+#include <QStackedWidget>
+#include <QStatusBar>
+
+#include "ui/widgets/ResourceIconDelegate.h"
+#include "ui/widgets/ZoomSlider.h"
+#include <QToolButton>
 
 #include "Application.h"
 #include "DataPackPage.h"
@@ -97,6 +106,7 @@ WorldListPage::WorldListPage(MinecraftInstance* inst, WorldList* worlds, QWidget
     proxy->setSortCaseSensitivity(Qt::CaseInsensitive);
     proxy->setSourceModel(m_worlds);
     proxy->setSortRole(Qt::UserRole);
+    ui->worldTreeView->setSelectionBehavior(QAbstractItemView::SelectRows);
     ui->worldTreeView->setSortingEnabled(true);
     ui->worldTreeView->setModel(proxy);
     ui->worldTreeView->installEventFilter(this);
@@ -104,13 +114,97 @@ WorldListPage::WorldListPage(MinecraftInstance* inst, WorldList* worlds, QWidget
     ui->worldTreeView->setIconSize(QSize(64, 64));
     connect(ui->worldTreeView, &QTreeView::customContextMenuRequested, this, &WorldListPage::ShowContextMenu);
 
+    // Icon grid view, stacked with the table (modeled after Dolphin's view mode switching).
+    // Both views share the same proxy model and keep their selections in sync.
+    m_iconView = new QListView(this);
+    m_iconView->setViewMode(QListView::IconMode);
+    m_iconView->setIconSize(QSize(64, 64));
+    m_iconView->setGridSize(QSize(112, 108));
+    m_iconView->setSpacing(6);
+    m_iconView->setResizeMode(QListView::Adjust);
+    m_iconView->setMovement(QListView::Static);
+    m_iconView->setUniformItemSizes(true);
+    m_iconView->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    m_iconView->setFrameShape(QFrame::NoFrame);
+    m_iconView->setAttribute(Qt::WA_MacShowFocusRect, false);
+    m_iconView->setItemDelegate(new ResourceIconDelegate(0, 0, m_iconView, /*checkColumn=*/-1, /*badgeColumn=*/-1));
+    m_iconView->setModel(proxy);
+    m_iconView->setAcceptDrops(true);
+    m_iconView->setDragDropMode(QAbstractItemView::DragDrop);
+    m_iconView->installEventFilter(this);
+    m_iconView->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_iconView, &QWidget::customContextMenuRequested, this, &WorldListPage::ShowContextMenu);
+
+    // stack the table and the grid; the grid layout cell is the one the treeView occupied
+    auto* outerLayout = ui->horizontalLayout;
+    outerLayout->removeWidget(ui->worldTreeView);
+    m_viewStack = new QStackedWidget(this);
+    m_viewStack->addWidget(ui->worldTreeView);
+    m_viewStack->addWidget(m_iconView);
+    outerLayout->addWidget(m_viewStack);
+
+    // keep the selections of the two views in sync (same proxy model)
+    connect(ui->worldTreeView->selectionModel(), &QItemSelectionModel::selectionChanged, this,
+            [this] { syncSelection(ui->worldTreeView->selectionModel(), m_iconView->selectionModel()); });
+    connect(m_iconView->selectionModel(), &QItemSelectionModel::selectionChanged, this,
+            [this] { syncSelection(m_iconView->selectionModel(), ui->worldTreeView->selectionModel()); });
+
+    // view mode switcher, modeled after Dolphin's view_mode action; the mode is
+    // persisted globally in the WorldListViewMode setting
+    m_actionListViewIcons = new QAction(QIcon::fromTheme(QStringLiteral("view-list-icons")), tr("Icons"), this);
+    m_actionListViewIcons->setCheckable(true);
+    m_actionListViewIcons->setToolTip(tr("Show items as a grid of icons"));
+    m_actionListViewDetails = new QAction(QIcon::fromTheme(QStringLiteral("view-list-tree")), tr("Details"), this);
+    m_actionListViewDetails->setCheckable(true);
+    m_actionListViewDetails->setToolTip(tr("Show items as a table"));
+    auto* viewModeGroup = new QActionGroup(this);
+    viewModeGroup->addAction(m_actionListViewIcons);
+    viewModeGroup->addAction(m_actionListViewDetails);
+    connect(m_actionListViewIcons, &QAction::triggered, this, [this] { setViewMode(InstanceViewMode::Icons); });
+    connect(m_actionListViewDetails, &QAction::triggered, this, [this] { setViewMode(InstanceViewMode::Details); });
+
+    auto* viewModeMenu = new QMenu(this);
+    viewModeMenu->addAction(m_actionListViewIcons);
+    viewModeMenu->addAction(m_actionListViewDetails);
+    m_viewModeAction = new QAction(QIcon::fromTheme(QStringLiteral("view-list-tree")), tr("View Mode"), this);
+    m_viewModeAction->setMenu(viewModeMenu);
+    m_viewModeAction->setToolTip(tr("Change view mode"));
+    ui->toolBar->insertActionBefore(ui->actionAdd, m_viewModeAction);
+    if (auto* button = qobject_cast<QToolButton*>(ui->toolBar->widgetForAction(m_viewModeAction))) {
+        button->setPopupMode(QToolButton::InstantPopup);
+    }
+
+    // zoom actions, modeled after Dolphin's zoom_in/zoom_out actions;
+    // the slider itself lives in the status bar, like Dolphin's zoom slider
+    const auto zoomActions = createZoomToolbarActions(this);
+    m_actionZoomIn = zoomActions.zoomIn;
+    m_actionZoomOut = zoomActions.zoomOut;
+    m_actionZoomReset = zoomActions.zoomReset;
+    connect(m_actionZoomIn, &QAction::triggered, this, [this] { setZoomLevel(m_zoomLevel + 1); });
+    connect(m_actionZoomOut, &QAction::triggered, this, [this] { setZoomLevel(m_zoomLevel - 1); });
+    connect(m_actionZoomReset, &QAction::triggered, this, [this] { setZoomLevel(4); });
+    ui->toolBar->insertActionBefore(m_viewModeAction, m_actionZoomOut);
+    ui->toolBar->insertActionBefore(m_viewModeAction, m_actionZoomIn);
+    this->addAction(m_actionZoomReset);  // widget-level, shortcut-only action (no toolbar button)
+
+    auto* zoomSlider = new ZoomStatusSlider(this);
+    m_zoomSlider = zoomSlider;
+    connect(zoomSlider, &ZoomStatusSlider::zoomLevelChanged, this, [this](int level) { setZoomLevel(level); });
+    setStatusBar(new QStatusBar(this));
+    statusBar()->addPermanentWidget(zoomSlider);
+
     auto head = ui->worldTreeView->header();
     head->setSectionResizeMode(0, QHeaderView::Stretch);
     head->setSectionResizeMode(1, QHeaderView::ResizeToContents);
     head->setSectionResizeMode(4, QHeaderView::ResizeToContents);
 
     connect(ui->worldTreeView->selectionModel(), &QItemSelectionModel::currentChanged, this, &WorldListPage::worldChanged);
+    connect(m_iconView->selectionModel(), &QItemSelectionModel::currentChanged, this, &WorldListPage::worldChanged);
     worldChanged(QModelIndex(), QModelIndex());
+
+    // apply the saved view mode (table or icon grid) and zoom level of the grid
+    setViewMode(instanceViewModeFromString(APPLICATION->settings()->get("WorldListViewMode").toString()));
+    setZoomLevel(APPLICATION->settings()->get("WorldsIconZoomLevel").toInt(), /*save=*/false);
 }
 
 void WorldListPage::openedImpl()
@@ -143,7 +237,8 @@ WorldListPage::~WorldListPage()
 void WorldListPage::ShowContextMenu(const QPoint& pos)
 {
     auto menu = ui->toolBar->createContextMenu(this, tr("Context menu"));
-    menu->exec(ui->worldTreeView->mapToGlobal(pos));
+    auto* view = qobject_cast<QWidget*>(sender());
+    menu->exec(view ? view->mapToGlobal(pos) : mapToGlobal(pos));
     delete menu;
 }
 
@@ -179,7 +274,7 @@ bool WorldListPage::eventFilter(QObject* obj, QEvent* ev)
         return QWidget::eventFilter(obj, ev);
     }
     QKeyEvent* keyEvent = static_cast<QKeyEvent*>(ev);
-    if (obj == ui->worldTreeView)
+    if (obj == ui->worldTreeView || obj == m_iconView)
         return worldListFilter(keyEvent);
     return QWidget::eventFilter(obj, ev);
 }
@@ -279,9 +374,88 @@ void WorldListPage::on_actionReset_Icon_triggered()
     }
 }
 
+QAbstractItemView* WorldListPage::listView() const
+{
+    if (m_viewMode == InstanceViewMode::Icons && m_iconView) {
+        return m_iconView;
+    }
+    return ui->worldTreeView;
+}
+
+void WorldListPage::syncSelection(QItemSelectionModel* from, QItemSelectionModel* to)
+{
+    if (m_syncing_selection || !from || !to) {
+        return;
+    }
+    m_syncing_selection = true;
+
+    // collect the unique rows of the current selection and re-select them
+    // (column 0 only; SelectRows views still highlight the whole row, and this
+    // keeps selectedIndexes().size() equal to the number of selected rows)
+    QList<int> rows;
+    const auto* model = from->model();
+    for (const QModelIndex& index : from->selection().indexes()) {
+        if (!rows.contains(index.row())) {
+            rows.append(index.row());
+        }
+    }
+    QItemSelection selection;
+    for (int row : rows) {
+        selection.select(model->index(row, 0), model->index(row, 0));
+    }
+    to->select(selection, QItemSelectionModel::ClearAndSelect);
+
+    m_syncing_selection = false;
+}
+
+void WorldListPage::setViewMode(InstanceViewMode mode)
+{
+    m_viewMode = mode;
+    APPLICATION->settings()->set("WorldListViewMode", instanceViewModeToString(mode));
+
+    if (m_viewStack) {
+        m_viewStack->setCurrentWidget(mode == InstanceViewMode::Icons ? static_cast<QWidget*>(m_iconView)
+                                                                       : static_cast<QWidget*>(ui->worldTreeView));
+    }
+    if (m_actionListViewIcons && m_actionListViewDetails) {
+        m_actionListViewIcons->setChecked(mode == InstanceViewMode::Icons);
+        m_actionListViewDetails->setChecked(mode == InstanceViewMode::Details);
+    }
+    if (m_viewModeAction) {
+        m_viewModeAction->setIcon(QIcon::fromTheme(mode == InstanceViewMode::Icons ? QStringLiteral("view-list-icons")
+                                                                                   : QStringLiteral("view-list-tree")));
+    }
+    if (auto* view = listView()) {
+        view->setFocus();
+    }
+}
+
+void WorldListPage::setZoomLevel(int level, bool save)
+{
+    m_zoomLevel = qBound(ZoomLevelInfo::minimumLevel(), level, ZoomLevelInfo::maximumLevel());
+    const int iconSize = ZoomLevelInfo::iconSizeForZoomLevel(m_zoomLevel);
+
+    if (auto* delegate = qobject_cast<ResourceIconDelegate*>(m_iconView ? m_iconView->itemDelegate() : nullptr)) {
+        delegate->setIconSize(iconSize);
+    }
+    if (m_iconView) {
+        m_iconView->setIconSize(QSize(iconSize, iconSize));
+        m_iconView->setGridSize(QSize(iconSize + 48, iconSize + 44));
+        m_iconView->viewport()->update();
+    }
+    if (m_zoomSlider) {
+        m_zoomSlider->setZoomLevel(m_zoomLevel);
+    }
+
+    if (save) {
+        APPLICATION->settings()->set("WorldsIconZoomLevel", m_zoomLevel);
+    }
+}
+
 QModelIndex WorldListPage::getSelectedWorld()
 {
-    auto index = ui->worldTreeView->selectionModel()->currentIndex();
+    auto* view = listView();
+    auto index = view ? view->selectionModel()->currentIndex() : QModelIndex();
 
     auto proxy = (QSortFilterProxyModel*)ui->worldTreeView->model();
     return proxy->mapToSource(index);

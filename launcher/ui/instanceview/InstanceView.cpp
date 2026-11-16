@@ -58,6 +58,7 @@
 #include <QtMath>
 
 #include "VisualGroup.h"
+#include "ui/widgets/ZoomSlider.h"
 #include "ui/themes/CatPainter.h"
 #include "ui/themes/ThemeManager.h"
 
@@ -95,6 +96,16 @@ InstanceView::~InstanceView()
     if (m_cat) {
         m_cat->deleteLater();
     }
+}
+
+void InstanceView::setIconZoomLevel(int level)
+{
+    m_iconZoomLevel = qBound(ZoomLevelInfo::minimumLevel(), level, ZoomLevelInfo::maximumLevel());
+    m_itemWidth = ZoomLevelInfo::iconSizeForZoomLevel(m_iconZoomLevel) * 2 + 4;
+    m_geometryCache.clear();
+    updateScrollbar();
+    scheduleDelayedItemsLayout();
+    viewport()->update();
 }
 
 void InstanceView::setModel(QAbstractItemModel* model)

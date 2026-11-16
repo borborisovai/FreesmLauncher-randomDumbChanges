@@ -38,6 +38,16 @@
 #include "ServersPage.h"
 #include "Application.h"
 #include "ServerPingTask.h"
+#include <QListView>
+#include <QStackedWidget>
+#include <QStatusBar>
+#include <QActionGroup>
+#include <QItemSelectionModel>
+#include <QMenu>
+
+#include "ui/widgets/ResourceIconDelegate.h"
+#include "ui/widgets/ZoomSlider.h"
+#include <QToolButton>
 #include "ui/dialogs/CustomMessageBox.h"
 #include "ui_ServersPage.h"
 
@@ -55,7 +65,7 @@
 #include <QMenu>
 #include <QTimer>
 
-static const int COLUMN_COUNT = 3;  // 3 , TBD: latency and other nice things.
+static const int COLUMN_COUNT = 4;  // Name, Address, Online, MOTD
 
 struct Server {
     // Types
@@ -113,6 +123,7 @@ struct Server {
 
     // Data - temporary
     std::optional<int> m_currentPlayers;  // nullopt if not calculated/calculating
+    std::optional<QString> m_motd;        // nullopt if not calculated/calculating; empty string if the server doesn't send one
 };
 
 static std::unique_ptr<nbt::tag_compound> parseServersDat(const QString& filename)
@@ -287,6 +298,8 @@ class ServersModel : public QAbstractListModel {
                     return tr("Address");
                 case 2:
                     return tr("Online");
+                case 3:
+                    return tr("MOTD");
             }
         }
 
@@ -332,9 +345,21 @@ class ServersModel : public QAbstractListModel {
                         } else {
                             return "...";
                         }
+                    case 3:
+                        if (m_servers[row].m_motd) {
+                            return *m_servers[row].m_motd;
+                        } else {
+                            return "...";
+                        }
                     default:
                         return QVariant();
                 }
+            case Qt::ToolTipRole:
+                // show the full MOTD on hover, the cell itself elides it
+                if (column == 3 && m_servers[row].m_motd) {
+                    return *m_servers[row].m_motd;
+                }
+                return QVariant();
             case ServerPtrRole:
                 if (column == 0)
                     return QVariant::fromValue<void*>((void*)&m_servers[row]);
@@ -436,8 +461,9 @@ class ServersModel : public QAbstractListModel {
             new ConcurrentTask("Query servers status", APPLICATION->settings()->get("NumberOfConcurrentTasks").toInt()));
         int row = 0;
         for (Server& server : m_servers) {
-            // reset current players
+            // reset current players and motd
             server.m_currentPlayers = {};
+            server.m_motd = {};
             emit dataChanged(index(row, 0), index(row, COLUMN_COUNT - 1));
 
             // Start task to query server status
@@ -450,6 +476,7 @@ class ServersModel : public QAbstractListModel {
                 if (m_servers.size() < row)
                     return;
                 m_servers[row].m_currentPlayers = task->m_outputOnlinePlayers;
+                m_servers[row].m_motd = task->m_outputMotd;
                 emit dataChanged(index(row, 0), index(row, COLUMN_COUNT - 1));
             });
             row++;
@@ -558,12 +585,92 @@ ServersPage::ServersPage(BaseInstance* inst, QWidget* parent) : QMainWindow(pare
     ui->serversView->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(ui->serversView, &QTreeView::customContextMenuRequested, this, &ServersPage::ShowContextMenu);
 
+    // Icon grid view, stacked with the table (modeled after Dolphin's view mode switching).
+    // Both views share the same model and keep their selections in sync.
+    m_iconView = new QListView(this);
+    m_iconView->setViewMode(QListView::IconMode);
+    m_iconView->setIconSize(QSize(64, 64));
+    m_iconView->setGridSize(QSize(112, 108));
+    m_iconView->setSpacing(6);
+    m_iconView->setResizeMode(QListView::Adjust);
+    m_iconView->setMovement(QListView::Static);
+    m_iconView->setUniformItemSizes(true);
+    m_iconView->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_iconView->setFrameShape(QFrame::NoFrame);
+    m_iconView->setAttribute(Qt::WA_MacShowFocusRect, false);
+    m_iconView->setItemDelegate(new ResourceIconDelegate(0, 0, m_iconView, /*checkColumn=*/-1, /*badgeColumn=*/-1));
+    m_iconView->setModel(m_model);
+    m_iconView->setAcceptDrops(true);
+    m_iconView->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_iconView, &QWidget::customContextMenuRequested, this, &ServersPage::ShowContextMenu);
+
+    // stack the table and the grid; the grid layout cell is the one the treeView occupied
+    auto* outerLayout = ui->verticalLayout;
+    outerLayout->removeWidget(ui->serversView);
+    m_viewStack = new QStackedWidget(this);
+    m_viewStack->addWidget(ui->serversView);
+    m_viewStack->addWidget(m_iconView);
+    outerLayout->insertWidget(0, m_viewStack);
+
+    // keep the selections of the two views in sync (same model)
+    connect(ui->serversView->selectionModel(), &QItemSelectionModel::selectionChanged, this,
+            [this] { syncSelection(ui->serversView->selectionModel(), m_iconView->selectionModel()); });
+    connect(m_iconView->selectionModel(), &QItemSelectionModel::selectionChanged, this,
+            [this] { syncSelection(m_iconView->selectionModel(), ui->serversView->selectionModel()); });
+    connect(m_iconView->selectionModel(), &QItemSelectionModel::currentChanged, this, &ServersPage::currentChanged);
+
+    // view mode switcher, modeled after Dolphin's view_mode action; the mode is
+    // persisted globally in the ServersListViewMode setting
+    m_actionListViewIcons = new QAction(QIcon::fromTheme(QStringLiteral("view-list-icons")), tr("Icons"), this);
+    m_actionListViewIcons->setCheckable(true);
+    m_actionListViewIcons->setToolTip(tr("Show items as a grid of icons"));
+    m_actionListViewDetails = new QAction(QIcon::fromTheme(QStringLiteral("view-list-tree")), tr("Details"), this);
+    m_actionListViewDetails->setCheckable(true);
+    m_actionListViewDetails->setToolTip(tr("Show items as a table"));
+    auto* viewModeGroup = new QActionGroup(this);
+    viewModeGroup->addAction(m_actionListViewIcons);
+    viewModeGroup->addAction(m_actionListViewDetails);
+    connect(m_actionListViewIcons, &QAction::triggered, this, [this] { setViewMode(InstanceViewMode::Icons); });
+    connect(m_actionListViewDetails, &QAction::triggered, this, [this] { setViewMode(InstanceViewMode::Details); });
+
+    auto* viewModeMenu = new QMenu(this);
+    viewModeMenu->addAction(m_actionListViewIcons);
+    viewModeMenu->addAction(m_actionListViewDetails);
+    m_viewModeAction = new QAction(QIcon::fromTheme(QStringLiteral("view-list-tree")), tr("View Mode"), this);
+    m_viewModeAction->setMenu(viewModeMenu);
+    m_viewModeAction->setToolTip(tr("Change view mode"));
+    ui->toolBar->insertActionBefore(ui->actionAdd, m_viewModeAction);
+    if (auto* button = qobject_cast<QToolButton*>(ui->toolBar->widgetForAction(m_viewModeAction))) {
+        button->setPopupMode(QToolButton::InstantPopup);
+    }
+
+    // zoom actions, modeled after Dolphin's zoom_in/zoom_out actions;
+    // the slider itself lives in the status bar, like Dolphin's zoom slider
+    const auto zoomActions = createZoomToolbarActions(this);
+    m_actionZoomIn = zoomActions.zoomIn;
+    m_actionZoomOut = zoomActions.zoomOut;
+    m_actionZoomReset = zoomActions.zoomReset;
+    connect(m_actionZoomIn, &QAction::triggered, this, [this] { setZoomLevel(m_zoomLevel + 1); });
+    connect(m_actionZoomOut, &QAction::triggered, this, [this] { setZoomLevel(m_zoomLevel - 1); });
+    connect(m_actionZoomReset, &QAction::triggered, this, [this] { setZoomLevel(4); });
+    ui->toolBar->insertActionBefore(m_viewModeAction, m_actionZoomOut);
+    ui->toolBar->insertActionBefore(m_viewModeAction, m_actionZoomIn);
+    this->addAction(m_actionZoomReset);  // widget-level, shortcut-only action (no toolbar button)
+
+    auto* zoomSlider = new ZoomStatusSlider(this);
+    m_zoomSlider = zoomSlider;
+    connect(zoomSlider, &ZoomStatusSlider::zoomLevelChanged, this, [this](int level) { setZoomLevel(level); });
+    setStatusBar(new QStatusBar(this));
+    statusBar()->addPermanentWidget(zoomSlider);
+
     auto head = ui->serversView->header();
     if (head->count()) {
         head->setSectionResizeMode(0, QHeaderView::Stretch);
         for (int i = 1; i < head->count(); i++) {
             head->setSectionResizeMode(i, QHeaderView::ResizeToContents);
         }
+        // both the name and the MOTD stretch, sharing the available space
+        head->setSectionResizeMode(3, QHeaderView::Stretch);
     }
 
     auto selectionModel = ui->serversView->selectionModel();
@@ -579,7 +686,89 @@ ServersPage::ServersPage(BaseInstance* inst, QWidget* parent) : QMainWindow(pare
         m_model->lock();
     }
 
+    // apply the saved view mode (table or icon grid) and zoom level of the grid
+    setViewMode(instanceViewModeFromString(APPLICATION->settings()->get("ServersListViewMode").toString()));
+    setZoomLevel(APPLICATION->settings()->get("ServersIconZoomLevel").toInt(), /*save=*/false);
+
     updateState();
+}
+
+QAbstractItemView* ServersPage::listView() const
+{
+    if (m_viewMode == InstanceViewMode::Icons && m_iconView) {
+        return m_iconView;
+    }
+    return ui->serversView;
+}
+
+void ServersPage::syncSelection(QItemSelectionModel* from, QItemSelectionModel* to)
+{
+    if (m_syncing_selection || !from || !to) {
+        return;
+    }
+    m_syncing_selection = true;
+
+    // collect the unique rows of the current selection and re-select them
+    // (column 0 only; SelectRows views still highlight the whole row, and this
+    // keeps selectedIndexes().size() equal to the number of selected rows)
+    QList<int> rows;
+    const auto* model = from->model();
+    for (const QModelIndex& index : from->selection().indexes()) {
+        if (!rows.contains(index.row())) {
+            rows.append(index.row());
+        }
+    }
+    QItemSelection selection;
+    for (int row : rows) {
+        selection.select(model->index(row, 0), model->index(row, 0));
+    }
+    to->select(selection, QItemSelectionModel::ClearAndSelect);
+
+    m_syncing_selection = false;
+}
+
+void ServersPage::setViewMode(InstanceViewMode mode)
+{
+    m_viewMode = mode;
+    APPLICATION->settings()->set("ServersListViewMode", instanceViewModeToString(mode));
+
+    if (m_viewStack) {
+        m_viewStack->setCurrentWidget(mode == InstanceViewMode::Icons ? static_cast<QWidget*>(m_iconView)
+                                                                       : static_cast<QWidget*>(ui->serversView));
+    }
+    if (m_actionListViewIcons && m_actionListViewDetails) {
+        m_actionListViewIcons->setChecked(mode == InstanceViewMode::Icons);
+        m_actionListViewDetails->setChecked(mode == InstanceViewMode::Details);
+    }
+    if (m_viewModeAction) {
+        m_viewModeAction->setIcon(QIcon::fromTheme(mode == InstanceViewMode::Icons ? QStringLiteral("view-list-icons")
+                                                                                   : QStringLiteral("view-list-tree")));
+    }
+    if (auto* view = listView()) {
+        view->setFocus();
+    }
+}
+
+void ServersPage::setZoomLevel(int level, bool save)
+{
+    m_zoomLevel = qBound(ZoomLevelInfo::minimumLevel(), level, ZoomLevelInfo::maximumLevel());
+    const int iconSize = ZoomLevelInfo::iconSizeForZoomLevel(m_zoomLevel);
+
+    if (auto* delegate = qobject_cast<ResourceIconDelegate*>(m_iconView ? m_iconView->itemDelegate() : nullptr)) {
+        delegate->setIconSize(iconSize);
+    }
+    if (m_iconView) {
+        m_iconView->setIconSize(QSize(iconSize, iconSize));
+        m_iconView->setGridSize(QSize(iconSize + 48, iconSize + 44));
+        m_iconView->viewport()->update();
+    }
+    if (m_zoomSlider) {
+        m_zoomSlider->setZoomLevel(m_zoomLevel);
+    }
+
+    if (save) {
+        APPLICATION->settings()->set("ServersIconZoomLevel", m_zoomLevel);
+    }
 }
 
 ServersPage::~ServersPage()
@@ -596,7 +785,8 @@ void ServersPage::retranslate()
 void ServersPage::ShowContextMenu(const QPoint& pos)
 {
     auto menu = ui->toolBar->createContextMenu(this, tr("Context menu"));
-    menu->exec(ui->serversView->mapToGlobal(pos));
+    auto* view = qobject_cast<QWidget*>(sender());
+    menu->exec(view ? view->mapToGlobal(pos) : mapToGlobal(pos));
     delete menu;
 }
 
@@ -718,8 +908,11 @@ void ServersPage::on_actionAdd_triggered()
         return;
     }
     // select the new row
-    ui->serversView->selectionModel()->setCurrentIndex(
-        m_model->index(position), QItemSelectionModel::SelectCurrent | QItemSelectionModel::Clear | QItemSelectionModel::Rows);
+    if (auto* view = listView()) {
+        view->selectionModel()->setCurrentIndex(m_model->index(position, 0),
+                                               QItemSelectionModel::SelectCurrent | QItemSelectionModel::Clear |
+                                                   QItemSelectionModel::Rows);
+    }
     currentServer = position;
 }
 

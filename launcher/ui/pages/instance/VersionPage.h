@@ -46,10 +46,18 @@
 #include "minecraft/MinecraftInstance.h"
 #include "minecraft/PackProfile.h"
 #include "ui/pages/BasePage.h"
+#include "ui/instanceview/InstanceViewMode.h"
 
 namespace Ui {
 class VersionPage;
 }
+
+class QAbstractItemView;
+class QItemSelectionModel;
+class QListView;
+class QStackedWidget;
+class QAction;
+class ZoomStatusSlider;
 
 class VersionPage : public QMainWindow, public BasePage {
     Q_OBJECT
@@ -92,6 +100,9 @@ class VersionPage : public QMainWindow, public BasePage {
    private:
     ComponentPtr current();
     int currentRow();
+    /// the currently visible view (table or icon grid)
+    QAbstractItemView* currentView() const;
+    void syncSelection(QItemSelectionModel* from, QItemSelectionModel* to);
     void updateButtons(int row = -1);
     void preselect(int row = 0);
     int doUpdate();
@@ -111,8 +122,28 @@ class VersionPage : public QMainWindow, public BasePage {
 
     std::shared_ptr<Setting> m_wide_bar_setting = nullptr;
 
+    QListView* m_iconView = nullptr;
+    QStackedWidget* m_viewStack = nullptr;
+    InstanceViewMode m_viewMode = InstanceViewMode::Details;
+    QAction* m_actionListViewIcons = nullptr;
+    QAction* m_actionListViewDetails = nullptr;
+    QAction* m_viewModeAction = nullptr;
+    QAction* m_actionZoomIn = nullptr;
+    QAction* m_actionZoomOut = nullptr;
+    QAction* m_actionZoomReset = nullptr;
+    ZoomStatusSlider* m_zoomSlider = nullptr;
+    int m_zoomLevel = 4;
+    bool m_syncing_selection = false;
+
    public slots:
     void versionCurrent(const QModelIndex& current, const QModelIndex& previous);
+
+    /// switch between the table (details) and the icon grid (modeled after Dolphin's view mode switching);
+    /// the mode is persisted globally in the ComponentListViewMode setting
+    void setViewMode(InstanceViewMode mode);
+    /// set the zoom level (0-16, modeled after Dolphin) of the icon grid;
+    /// persisted globally in the ComponentIconZoomLevel setting unless \a save is false
+    void setZoomLevel(int level, bool save = true);
 
    private slots:
     void onGameUpdateError(QString error);

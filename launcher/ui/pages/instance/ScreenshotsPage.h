@@ -40,9 +40,17 @@
 #include "ui/pages/BasePage.h"
 
 #include "settings/Setting.h"
+#include "ui/instanceview/InstanceViewMode.h"
 
+class QAbstractItemView;
+class QItemSelectionModel;
 class QIdentityProxyModel;
 class QItemSelection;
+class QTreeView;
+class QListView;
+class QStackedWidget;
+class QAction;
+class ZoomStatusSlider;
 namespace Ui {
 class ScreenshotsPage;
 }
@@ -73,6 +81,14 @@ class ScreenshotsPage : public QMainWindow, public BasePage {
     virtual bool apply() override { return !m_uploadActive; }
     void retranslate() override;
 
+   public slots:
+    /// switch between the icon grid (Icons) and a file table (Details), modeled after Dolphin's view mode switching;
+    /// the mode is persisted globally in the ScreenshotListViewMode setting
+    void setViewMode(InstanceViewMode mode);
+    /// set the zoom level (0-16, modeled after Dolphin) of the icon grid;
+    /// persisted globally in the ScreenshotIconZoomLevel setting unless \a save is false
+    void setZoomLevel(int level, bool save = true);
+
    protected:
     QMenu* createPopupMenu() override;
 
@@ -88,6 +104,10 @@ class ScreenshotsPage : public QMainWindow, public BasePage {
     void showContextMenu(const QPoint& pos);
 
    private:
+    /// the currently visible view (icon grid or file table)
+    QAbstractItemView* currentView() const;
+    void syncSelection(QItemSelectionModel* from, QItemSelectionModel* to);
+
     Ui::ScreenshotsPage* ui;
     std::shared_ptr<ScreenshotsFSModel> m_model;
     std::shared_ptr<QIdentityProxyModel> m_filterModel;
@@ -96,4 +116,17 @@ class ScreenshotsPage : public QMainWindow, public BasePage {
     bool m_uploadActive = false;
 
     std::shared_ptr<Setting> m_wide_bar_setting = nullptr;
+
+    QTreeView* m_detailView = nullptr;
+    QStackedWidget* m_viewStack = nullptr;
+    InstanceViewMode m_viewMode = InstanceViewMode::Icons;
+    QAction* m_actionListViewIcons = nullptr;
+    QAction* m_actionListViewDetails = nullptr;
+    QAction* m_viewModeAction = nullptr;
+    QAction* m_actionZoomIn = nullptr;
+    QAction* m_actionZoomOut = nullptr;
+    QAction* m_actionZoomReset = nullptr;
+    ZoomStatusSlider* m_zoomSlider = nullptr;
+    int m_zoomLevel = 8;
+    bool m_syncing_selection = false;
 };
