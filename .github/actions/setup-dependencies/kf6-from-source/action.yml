@@ -47,7 +47,6 @@ runs:
           macOS)
             brew list flex >/dev/null 2>&1 || brew install flex
             brew list bison >/dev/null 2>&1 || brew install bison
-            brew list gettext >/dev/null 2>&1 || brew install gettext
             ;;
           Linux)
             # extra-cmake-modules and Qt come from aqtinstall/vcpkg; flex/bison,
@@ -58,12 +57,18 @@ runs:
             ;;
         esac
 
-    - name: Install gettext via vcpkg (Windows)
-      if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'Windows'
+    - name: Install gettext via vcpkg (Windows & macOS)
+      if: steps.cache.outputs.cache-hit != 'true' && runner.os != 'Linux'
       shell: bash
       run: |
+        case "${{ runner.os }}-${{ runner.arch }}" in
+          Windows-X64)   TRIPLET=x64-windows ;;
+          Windows-ARM64) TRIPLET=arm64-windows ;;
+          macOS-*)       TRIPLET=universal-osx ;;
+          *) echo "::error::unsupported runner ${{ runner.os }}-${{ runner.arch }}" >&2; exit 1 ;;
+        esac
         VCPKG_EXE="${VCPKG_ROOT:-$VCPKG_INSTALLATION_ROOT}/vcpkg.exe"
-        "$VCPKG_EXE" install --x-manifest-root="$GITHUB_WORKSPACE"
+        "$VCPKG_EXE" install --triplet="$TRIPLET" --x-manifest-root="$GITHUB_WORKSPACE"
 
     - name: Build and install KF6 from source
       if: steps.cache.outputs.cache-hit != 'true'

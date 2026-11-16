@@ -28,13 +28,9 @@ echo "Qt6 prefix: $QT_PREFIX"
 
 # Extra prefixes the KF6 build should see (e.g. gettext/libintl from vcpkg).
 EXTRA_PREFIX=""
-if [ "$RUNNER_OS" = "Windows" ]; then
-  if [ -d "$GITHUB_WORKSPACE/vcpkg_installed" ]; then
-    TRIPLET_DIR="$(ls -d "$GITHUB_WORKSPACE"/vcpkg_installed/*/ | head -n 1)"
-    EXTRA_PREFIX="${TRIPLET_DIR%/}"
-  fi
-elif [ "$RUNNER_OS" = "Darwin" ]; then
-  EXTRA_PREFIX="$(brew --prefix gettext)"
+if [ -d "$GITHUB_WORKSPACE/vcpkg_installed" ]; then
+  TRIPLET_DIR="$(ls -d "$GITHUB_WORKSPACE"/vcpkg_installed/*/ | head -n 1)"
+  EXTRA_PREFIX="${TRIPLET_DIR%/}"
 fi
 if [ -n "$EXTRA_PREFIX" ]; then
   echo "Extra prefix: $EXTRA_PREFIX"

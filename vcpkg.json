@@ -28,7 +28,7 @@
     "zlib",
     {
       "name": "gettext",
-      "platform": "windows"
+      "platform": "windows | osx"
     }
   ]
 }
