@@ -84,22 +84,6 @@
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "$penv{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
       }
-    },
-    {
-      "name": "linux_clang",
-      "displayName": "Linux (Clang)",
-      "inherits": [
-        "base"
-      ],
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Linux"
-      },
-      "cacheVariables": {
-        "CMAKE_C_COMPILER": "clang",
-        "CMAKE_CXX_COMPILER": "clang++"
-      }
     }
   ],
   "buildPresets": [
@@ -112,16 +96,6 @@
         "rhs": "Linux"
       },
       "configurePreset": "linux"
-    },
-    {
-      "name": "linux_clang",
-      "displayName": "Linux (Clang)",
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Linux"
-      },
-      "configurePreset": "linux_clang"
     },
     {
       "name": "macos",
@@ -191,19 +165,6 @@
         "rhs": "Linux"
       },
       "configurePreset": "linux"
-    },
-    {
-      "name": "linux_clang",
-      "displayName": "Linux (Clang)",
-      "inherits": [
-        "base"
-      ],
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Linux"
-      },
-      "configurePreset": "linux_clang"
     },
     {
       "name": "macos",

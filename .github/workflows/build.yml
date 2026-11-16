@@ -43,7 +43,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             artifact-name: Linux
             cmake-preset: linux
             qt-version: 6.10.2
@@ -81,8 +81,8 @@ jobs:
           - os: macos-26
             artifact-name: macOS
             cmake-preset: macos_universal
-            macosx-deployment-target: 13.3
-            qt-version: 6.10.2
+            macosx-deployment-target: 12.0
+            qt-version: 6.9.3
 
     runs-on: ${{ matrix.os }}
 

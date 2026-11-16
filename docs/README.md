@@ -128,14 +128,6 @@ The translation effort for Prism Launcher is hosted on Weblate, and information 
 
 To build Freesm Launcher yourself, see the [Prism Launcher build instructions](https://prismlauncher.org/wiki/development/build-instructions/) (Freesm uses the Garnix build system).
 
-Note: the log views are implemented with KDE's KTextEditor (the editor component KWrite is built on), so building now requires KDE Frameworks 6 with the KTextEditor component:
-
-- Debian/Ubuntu: `libkf6texteditor-dev` (note: this package only exists on Ubuntu 25.04 / Debian trixie and newer; older releases such as Ubuntu 24.04 ship KDE Frameworks 5.x only and cannot build the log views)
-- Windows (MSYS2): `mingw-w64-<env>-ktexteditor` (e.g. `pacboy ktexteditor:p`)
-- Nix: `kdePackages.ktexteditor`
-
-Prebuilt KTextEditor packages are currently not available for macOS or the Windows MSVC (vcpkg) toolchain, so builds on those platforms will fail at the CMake step until packaging exists for them.
-
 ## Other
 
 <ul>

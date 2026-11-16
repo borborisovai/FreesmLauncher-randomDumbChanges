@@ -23,14 +23,14 @@ jobs:
       fail-fast: true
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             qt_ver: 5
             qt_host: linux
             qt_arch: ""
             qt_version: "5.15.2"
             qt_modules: "qtnetworkauth"
 
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             qt_ver: 6
             qt_host: linux
             qt_arch: ""
@@ -60,7 +60,7 @@ jobs:
       - name: Install Dependencies (Linux)
         run: |
           sudo apt-get -y update
-          sudo apt-get -y install ninja-build extra-cmake-modules scdoc appstream libxcb-cursor-dev libkf6texteditor-dev
+          sudo apt-get -y install ninja-build extra-cmake-modules scdoc appstream libxcb-cursor-dev
 
       - name: Install Qt (macOS, Linux & Windows MSVC)
         uses: jurplel/install-qt-action@v4

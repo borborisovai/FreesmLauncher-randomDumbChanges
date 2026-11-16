@@ -5,12 +5,6 @@ if(APPLE)
     enable_language(OBJC OBJCXX)
 endif()
 
-# KDE Frameworks built from source (macOS, Windows MSVC, Linux aarch64) install
-# into a private prefix; search it even if CMAKE_PREFIX_PATH does not cover it.
-if(DEFINED ENV{KF6_INSTALL_PREFIX})
-    list(PREPEND CMAKE_SYSTEM_PREFIX_PATH "$ENV{KF6_INSTALL_PREFIX}")
-endif()
-
 string(COMPARE EQUAL "${CMAKE_SOURCE_DIR}" "${CMAKE_BUILD_DIR}" IS_IN_SOURCE_BUILD)
 if(IS_IN_SOURCE_BUILD)
     message(FATAL_ERROR "You are building the Launcher in-source. Please separate the build tree from the source tree.")
@@ -348,37 +342,6 @@ if(NOT tomlplusplus_FOUND)
 endif()
 
 find_package(ZLIB REQUIRED)
-
-# Find KTextEditor (Kate's editor component, used to render the log views).
-# This is a hard dependency; there is no fallback implementation.
-find_package(KF6TextEditor 6.0 QUIET)
-if(NOT TARGET KF6::TextEditor)
-    message(FATAL_ERROR
-        "KF6 KTextEditor was not found. Freesm Launcher builds its log views on the "
-        "KTextEditor component of Kate. Install the development package, e.g. "
-        "'libkf6texteditor-dev' (Debian/Ubuntu), 'pacboy ktexteditor:p' (MSYS2) or "
-        "'kdePackages.ktexteditor' (Nix). Alternatively point KF6_INSTALL_PREFIX at a "
-        "prefix with a source-built KF6 (the setup-dependencies/kf6-from-source CI "
-        "action does exactly that).")
-endif()
-
-# Derive the KF6 install prefix from the config file location, so the dependency
-# bundling step can find the built libraries.
-set(KF6_BUNDLE_DIRS "")
-if(KF6TextEditor_DIR)
-    get_filename_component(_kf6_cmake "${KF6TextEditor_DIR}" PATH)   # <prefix>/lib/cmake/KF6TextEditor -> <prefix>/lib/cmake
-    get_filename_component(_kf6_lib "${_kf6_cmake}" PATH)            # -> <prefix>/lib
-    get_filename_component(_kf6_prefix "${_kf6_lib}" PATH)           # -> <prefix>
-    foreach(_dir "${_kf6_prefix}/bin" "${_kf6_prefix}/lib" "${_kf6_prefix}/lib64" "${_kf6_prefix}/Frameworks")
-        if(EXISTS "${_dir}")
-            list(APPEND KF6_BUNDLE_DIRS "${_dir}")
-        endif()
-    endforeach()
-    unset(_kf6_cmake)
-    unset(_kf6_lib)
-    unset(_kf6_prefix)
-    unset(_dir)
-endif()
 
 
 include(ECMQtDeclareLoggingCategory)

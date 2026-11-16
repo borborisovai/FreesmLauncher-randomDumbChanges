@@ -82,6 +82,52 @@ QVariant LogFormatProxyModel::data(const QModelIndex& index, int role) const
     return QIdentityProxyModel::data(index, role);
 }
 
+QModelIndex LogFormatProxyModel::find(const QModelIndex& start, const QString& value, bool reverse) const
+{
+    QModelIndex parentIndex = parent(start);
+    auto compare = [this, start, parentIndex, value](int r) -> QModelIndex {
+        QModelIndex idx = index(r, start.column(), parentIndex);
+        if (!idx.isValid() || idx == start) {
+            return QModelIndex();
+        }
+        QVariant v = data(idx, Qt::DisplayRole);
+        QString t = v.toString();
+        if (t.contains(value, Qt::CaseInsensitive))
+            return idx;
+        return QModelIndex();
+    };
+    if (reverse) {
+        int from = start.row();
+        int to = 0;
+
+        for (int i = 0; i < 2; ++i) {
+            for (int r = from; (r >= to); --r) {
+                auto idx = compare(r);
+                if (idx.isValid())
+                    return idx;
+            }
+            // prepare for the next iteration
+            from = rowCount() - 1;
+            to = start.row();
+        }
+    } else {
+        int from = start.row();
+        int to = rowCount(parentIndex);
+
+        for (int i = 0; i < 2; ++i) {
+            for (int r = from; (r < to); ++r) {
+                auto idx = compare(r);
+                if (idx.isValid())
+                    return idx;
+            }
+            // prepare for the next iteration
+            from = 0;
+            to = start.row();
+        }
+    }
+    return QModelIndex();
+}
+
 LogPage::LogPage(BaseInstance* instance, QWidget* parent) : QWidget(parent), ui(new Ui::LogPage), m_instance(instance)
 {
     ui->setupUi(this);

@@ -72,7 +72,7 @@ class ZoomStatusSlider : public QWidget {
     QLabel* m_sizeLabel = nullptr;
 };
 
-/// Actions for zooming: ZoomIn/ZoomOut standard keys, Ctrl+0 reset.
+/// Actions for zooming with standard shortcuts (ZoomIn/ZoomOut/ZoomReset).
 struct ZoomToolbarActions {
     QAction* zoomIn = nullptr;
     QAction* zoomOut = nullptr;
@@ -81,7 +81,7 @@ struct ZoomToolbarActions {
 
 /**
  * Creates zoom-in/zoom-out/reset actions with the standard
- * QKeySequence::ZoomIn / QKeySequence::ZoomOut / Ctrl+0
+ * QKeySequence::ZoomIn / QKeySequence::ZoomOut / QKeySequence::ZoomReset
  * shortcuts, to be added to a page's toolbar or menu.
  */
 ZoomToolbarActions createZoomToolbarActions(QObject* parent);

@@ -261,6 +261,8 @@ void OtherLogsPage::reload()
         QMessageBox::critical(this, tr("Error"), tr("Unable to open %1 for reading: %2").arg(m_currentFile, file.errorString()));
     } else {
         auto setPlainText = [this](const QString& text) {
+            QTextDocument* doc = ui->text->document();
+            doc->setDefaultFont(m_proxy->getFont());
             ui->text->setPlainText(text);
         };
         auto showTooBig = [setPlainText, &file]() {
