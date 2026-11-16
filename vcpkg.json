@@ -25,6 +25,10 @@
       ]
     },
     "tomlplusplus",
-    "zlib"
+    "zlib",
+    {
+      "name": "gettext",
+      "platform": "windows"
+    }
   ]
 }

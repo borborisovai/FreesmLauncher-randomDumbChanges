@@ -9,12 +9,20 @@ runs:
       shell: bash
       run: |
         sudo apt-get -y update
+        # KF6 KTextEditor is a hard dependency. On amd64 it comes from the
+        # Ubuntu archive; on arm64 (ubuntu-ports) libkf6texteditor-dev does not
+        # exist yet, so the KF6 frameworks are built from source instead (see
+        # the kf6-from-source action).
+        KF6_PKGS=""
+        if [ "$(uname -m)" != "aarch64" ]; then
+          KF6_PKGS="libkf6texteditor-dev"
+        fi
         sudo apt-get -y install \
           dpkg-dev \
           clang lld llvm \
           ninja-build extra-cmake-modules pkg-config scdoc \
           cmark gamemode-dev libarchive-dev libcmark-dev libqrencode-dev zlib1g-dev \
-          libxcb-cursor-dev libtomlplusplus-dev libkf6texteditor-dev
+          libxcb-cursor-dev libtomlplusplus-dev $KF6_PKGS
 
     - name: Setup AppImage tooling
       shell: bash

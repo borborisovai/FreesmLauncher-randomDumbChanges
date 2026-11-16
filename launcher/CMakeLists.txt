@@ -1704,6 +1704,7 @@ if(WIN32 OR (UNIX AND APPLE))
             ${CMAKE_SYSTEM_LIBRARY_PATH}
             ${QT_LIBS_DIR}
             ${QT_LIBEXECS_DIR}
+            ${KF6_BUNDLE_DIRS}
         PRE_EXCLUDE_REGEXES
             "^(api-ms-win|ext-ms)-.*\\.dll$"
             # FIXME: Why aren't these caught by the below regex???
