@@ -33,7 +33,7 @@ runs:
       uses: actions/cache@v5.0.4
       with:
         path: ${{ runner.temp }}/kf6-prefix
-        key: kf6-${{ runner.os }}-${{ runner.arch }}-${{ inputs.kf6-version }}-qt${{ inputs.qt-version }}-${{ hashFiles('.github/actions/setup-dependencies/kf6-from-source/build-kf6.sh', '.github/actions/setup-dependencies/kf6-from-source/action.yml', '.github/actions/setup-dependencies/kf6-from-source/patches/*.patch') }}
+        key: kf6-${{ runner.os }}-${{ runner.arch }}-${{ inputs.kf6-version }}-qt${{ inputs.qt-version }}-${{ hashFiles('.github/actions/setup-dependencies/kf6-from-source/build-kf6.sh', '.github/actions/setup-dependencies/kf6-from-source/action.yml', '.github/actions/setup-dependencies/kf6-from-source/patches/*.patch', '.github/actions/setup-dependencies/action.yml') }}
 
     - name: Install platform tools
       if: steps.cache.outputs.cache-hit != 'true'
@@ -53,7 +53,7 @@ runs:
             # libudev (KSolid), libmount (KIO) and libcanberra (KNotifications)
             # are required from the system.
             sudo apt-get -y update
-            sudo apt-get -y install meson flex bison libudev-dev libmount-dev libcanberra-dev gettext libxcb-keysyms1-dev libxcb-res0-dev libxcb-icccm4-dev libwayland-dev wayland-protocols
+            sudo apt-get -y install meson flex bison libudev-dev libmount-dev libcanberra-dev gettext libxcb-keysyms1-dev libxcb-res0-dev libxcb-icccm4-dev libxfixes-dev libwayland-dev wayland-protocols
             ;;
         esac
 

@@ -49,6 +49,11 @@ jobs:
           BASE_REF: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           nix develop --command bash -c '
-            set -o pipefail
-            clang-tidy -verify-config && git diff -U0 --no-color "$BASE_REF" | python3 scripts/clang-tidy-diff.py -p1 -path build -quiet -only-check-in-db
+            set -euo pipefail
+            clang-tidy -verify-config
+            # The Nix compiler wrapper injects the Qt include root, but clang-tidy
+            # does not run through that wrapper when reading compile_commands.json.
+            qt_headers="$(pkg-config --variable=includedir Qt6Core)"
+            test -f "$qt_headers/QtCore/qglobal.h"
+            git diff -U0 --no-color "$BASE_REF" | python3 scripts/clang-tidy-diff.py -p1 -path build -quiet -only-check-in-db "-extra-arg=-I$qt_headers"
           '

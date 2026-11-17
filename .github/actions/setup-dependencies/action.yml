@@ -77,7 +77,7 @@ runs:
       with:
         aqtversion: "==3.1.*"
         version: ${{ inputs.qt-version }}
-        modules: qtimageformats qtnetworkauth qtspeech
+        modules: qtimageformats qtnetworkauth qtspeech qtmultimedia
         cache: ${{ inputs.build-type == 'Debug' }}
 
     - name: Install KF6 from source
