@@ -203,6 +203,11 @@ for name in "${ORDER[@]}"; do
     continue
   fi
   clone_repo "$name" "$KF6_VERSION"
+  if [ "$name" = kio ] && [ "$RUNNER_OS" = Windows ]; then
+    # Developer app templates are not needed at runtime. Git for Windows tar
+    # treats a drive-letter archive path as a remote host when building them.
+    git -C "$SRC/kio" apply "$GITHUB_WORKSPACE/.github/actions/setup-dependencies/kf6-from-source/patches/kio-windows-templates.patch"
+  fi
   if [ "$name" = solid ] && [ "$RUNNER_OS-$RUNNER_ARCH" = Windows-ARM64 ]; then
     # Solid 6.32 uses the x86-only __cpuid intrinsic for all MSVC targets.
     git -C "$SRC/solid" apply "$GITHUB_WORKSPACE/.github/actions/setup-dependencies/kf6-from-source/patches/solid-msvc-arm64.patch"

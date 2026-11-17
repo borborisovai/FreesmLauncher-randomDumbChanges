@@ -129,12 +129,21 @@ jobs:
           cmake --build --preset "$CMAKE_PRESET" --config "$BUILD_TYPE"
 
       - name: Run tests
+        id: tests
         run: |
           ctest --preset "$CMAKE_PRESET" --build-config "$BUILD_TYPE" --output-on-failure
 
       ##
       # PACKAGE
       ##
+
+      - name: Show test log on failure
+        if: ${{ failure() && steps.tests.outcome == 'failure' }}
+        shell: bash
+        run: |
+          if [ -f build/Testing/Temporary/LastTest.log ]; then
+            cat build/Testing/Temporary/LastTest.log
+          fi
 
       - name: Get short version
         id: short-version
