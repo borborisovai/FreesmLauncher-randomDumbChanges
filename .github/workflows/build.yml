@@ -145,6 +145,20 @@ jobs:
             cat build/Testing/Temporary/LastTest.log
           fi
 
+      - name: Diagnose ARM64 test crashes
+        if: ${{ failure() && steps.tests.outcome == 'failure' && runner.os == 'Linux' && runner.arch == 'ARM64' }}
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y gdb
+          export QT_PLUGIN_PATH="$GITHUB_WORKSPACE/build:${QT_PLUGIN_PATH:-}"
+          cd build/tests
+          for test in Task ResourceFolderModel; do
+            echo "::group::Backtrace for $test"
+            timeout 60s gdb --batch -ex 'set pagination off' -ex run -ex 'thread apply all bt full' --args "$GITHUB_WORKSPACE/build/$BUILD_TYPE/$test" -nocrashhandler || true
+            echo "::endgroup::"
+          done
+
       - name: Get short version
         id: short-version
         shell: bash

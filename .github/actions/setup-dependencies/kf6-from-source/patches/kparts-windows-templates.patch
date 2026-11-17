@@ -1,0 +1,14 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -58,7 +58,9 @@
+ ki18n_install(po)
+ 
+ add_subdirectory( src )
+-add_subdirectory(templates)
++if(NOT WIN32)
++    add_subdirectory(templates)
++endif()
+ 
+ # create a Config.cmake and a ConfigVersion.cmake file and install them
+ set(CMAKECONFIG_INSTALL_DIR "${KDE_INSTALL_CMAKEPACKAGEDIR}/KF6Parts")
