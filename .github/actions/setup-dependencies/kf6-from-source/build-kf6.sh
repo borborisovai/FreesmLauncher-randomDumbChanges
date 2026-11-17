@@ -167,6 +167,7 @@ ORDER=(
   karchive
   kcodecs
   kcoreaddons
+  kdbusaddons          # required by KIO when D-Bus is enabled on Linux
   kcrash
   kguiaddons
   ki18n
@@ -194,6 +195,11 @@ ORDER=(
 )
 
 for name in "${ORDER[@]}"; do
+  # KGlobalAccel only supports Linux and FreeBSD; KXmlGui does not require it
+  # on Windows or macOS. Do not bypass upstream's platform check.
+  if { [ "$name" = kglobalaccel ] || [ "$name" = kdbusaddons ]; } && [ "$RUNNER_OS" != Linux ]; then
+    continue
+  fi
   clone_repo "$name" "$KF6_VERSION"
 done
 
@@ -202,6 +208,9 @@ EXTRA_ARGS+=(-DUSE_BreezeIcons=OFF)
 EXTRA_ARGS+=(-DSONNET_NO_BACKENDS=ON)
 
 for name in "${ORDER[@]}"; do
+  if { [ "$name" = kglobalaccel ] || [ "$name" = kdbusaddons ]; } && [ "$RUNNER_OS" != Linux ]; then
+    continue
+  fi
   case "$name" in
     kiconthemes|sonnet) build_one "$name" "${EXTRA_ARGS[@]}" ;;
     karchive) build_one "$name" -DWITH_BZIP2=OFF -DWITH_LIBLZMA=OFF -DWITH_OPENSSL=OFF -DWITH_LIBZSTD=OFF ;;
