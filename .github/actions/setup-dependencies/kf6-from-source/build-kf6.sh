@@ -46,7 +46,7 @@ if [ "$RUNNER_OS" = "macOS" ]; then
   curl -fsSL "https://ftpmirror.gnu.org/gnu/gettext/gettext-$GETTEXT_VERSION.tar.gz" | tar xz -C "$WORK"
   (
     cd "$WORK/gettext-$GETTEXT_VERSION"
-    ./configure --disable-shared --prefix="$GETTEXT_PREFIX" \
+    ./configure --disable-shared --disable-java --prefix="$GETTEXT_PREFIX" \
       CC="clang -arch arm64 -arch x86_64" CXX="clang++ -arch arm64 -arch x86_64" \
       CFLAGS="-arch arm64 -arch x86_64 -O2" CXXFLAGS="-arch arm64 -arch x86_64 -O2"
     make -j"$(sysctl -n hw.ncpu)"
@@ -63,21 +63,12 @@ fi
 # Normalize Windows path separators for plain bash file tests
 EXTRA_PREFIX_UNIX="${EXTRA_PREFIX//\\//}"
 
-# Generator: Ninja everywhere except Windows, where Visual Studio is always
-# present in the runner images.
+# Use Ninja with the VS developer shell on both Windows architectures. The
+# Visual Studio generator lost a generated object when linking syntax-highlighting.
 GEN_ARGS=(-G Ninja)
 CONFIG_BUILD_TYPE=""
 if [ "$RUNNER_OS" = "Windows" ]; then
-  if [ "$RUNNER_ARCH" = "ARM64" ]; then
-    # windows-11-arm runners ship VS 18 (18.x), which the CMake bundled
-    # on the image does not know. The VS developer shell is already in
-    # the environment, so use Ninja instead of a VS generator.
-    GEN_ARGS=(-G Ninja)
-    CONFIG_BUILD_TYPE=Release
-  else
-    GEN_ARGS=(-G "Visual Studio 17 2022" -A x64)
-    CONFIG_BUILD_TYPE=""
-  fi
+  CONFIG_BUILD_TYPE=Release
 fi
 
 MSGFMT=""
@@ -155,6 +146,17 @@ build_one() { # <dir-name> [extra-cmake-args...]
 clone_repo extra-cmake-modules "$KF6_VERSION"
 build_one extra-cmake-modules
 
+if [ "$RUNNER_OS" = "Linux" ]; then
+  # KF6WindowSystem 6.32 requires newer protocol data than Ubuntu 24.04
+  # provides. Install only protocol definitions, not a replacement compositor.
+  git clone -q --depth 1 --branch 1.46 https://github.com/wayland-mirror/wayland-protocols.git "$SRC/wayland-protocols"
+  meson setup "$BUILD/wayland-protocols" "$SRC/wayland-protocols" --prefix="$PREFIX" -Dtests=false
+  meson install -C "$BUILD/wayland-protocols"
+  export PKG_CONFIG_PATH="$PREFIX/share/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+  git clone -q --depth 1 --branch v1.23.0 https://github.com/KDE/plasma-wayland-protocols.git "$SRC/plasma-wayland-protocols"
+  build_one plasma-wayland-protocols
+fi
+
 # Windows: SnoreToast is a hard requirement for KF6Notifications when
 # libcanberra is not available (it never is on Windows).
 if [ "$RUNNER_OS" = "Windows" ]; then
@@ -201,6 +203,10 @@ for name in "${ORDER[@]}"; do
     continue
   fi
   clone_repo "$name" "$KF6_VERSION"
+  if [ "$name" = solid ] && [ "$RUNNER_OS-$RUNNER_ARCH" = Windows-ARM64 ]; then
+    # Solid 6.32 uses the x86-only __cpuid intrinsic for all MSVC targets.
+    git -C "$SRC/solid" apply "$GITHUB_WORKSPACE/.github/actions/setup-dependencies/kf6-from-source/patches/solid-msvc-arm64.patch"
+  fi
 done
 
 EXTRA_ARGS=()

@@ -123,7 +123,8 @@ struct Server {
 
     // Data - temporary
     std::optional<int> m_currentPlayers;  // nullopt if not calculated/calculating
-    std::optional<QString> m_motd;        // nullopt if not calculated/calculating; empty string if the server doesn't send one
+    QString m_motd;                       // empty if the server does not send one
+    bool m_motdAvailable = false;        // false while not calculated or calculating
 };
 
 static std::unique_ptr<nbt::tag_compound> parseServersDat(const QString& filename)
@@ -233,7 +234,7 @@ class ServersModel : public QAbstractListModel {
             position = rowCount();
         }
         beginInsertRows(QModelIndex(), position, position);
-        m_servers.insert(position, Server());
+        m_servers.emplace(position);
         endInsertRows();
         scheduleSave();
         return position;
@@ -346,8 +347,8 @@ class ServersModel : public QAbstractListModel {
                             return "...";
                         }
                     case 3:
-                        if (m_servers[row].m_motd) {
-                            return *m_servers[row].m_motd;
+                        if (m_servers[row].m_motdAvailable) {
+                            return m_servers[row].m_motd;
                         } else {
                             return "...";
                         }
@@ -356,8 +357,8 @@ class ServersModel : public QAbstractListModel {
                 }
             case Qt::ToolTipRole:
                 // show the full MOTD on hover, the cell itself elides it
-                if (column == 3 && m_servers[row].m_motd) {
-                    return *m_servers[row].m_motd;
+                if (column == 3 && m_servers[row].m_motdAvailable) {
+                    return m_servers[row].m_motd;
                 }
                 return QVariant();
             case ServerPtrRole:
@@ -463,7 +464,8 @@ class ServersModel : public QAbstractListModel {
         for (Server& server : m_servers) {
             // reset current players and motd
             server.m_currentPlayers = {};
-            server.m_motd = {};
+            server.m_motd.clear();
+            server.m_motdAvailable = false;
             emit dataChanged(index(row, 0), index(row, COLUMN_COUNT - 1));
 
             // Start task to query server status
@@ -473,10 +475,11 @@ class ServersModel : public QAbstractListModel {
 
             // Update the model when the task is done
             connect(task, &Task::finished, this, [this, task, row]() {
-                if (m_servers.size() < row)
+                if (row >= m_servers.size())
                     return;
                 m_servers[row].m_currentPlayers = task->m_outputOnlinePlayers;
                 m_servers[row].m_motd = task->m_outputMotd;
+                m_servers[row].m_motdAvailable = true;
                 emit dataChanged(index(row, 0), index(row, COLUMN_COUNT - 1));
             });
             row++;
