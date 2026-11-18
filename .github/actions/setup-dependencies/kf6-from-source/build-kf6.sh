@@ -93,9 +93,11 @@ CONFIG_ARGS=(-DCMAKE_INSTALL_PREFIX="$PREFIX" -DBUILD_TESTING=OFF -DWITH_WAYLAND
 if [ "$RUNNER_OS" = Windows ] && [ "$CONFIG_BUILD_TYPE" = Debug ]; then
   # Embed debug information in object files instead of sharing a compiler PDB.
   # SnoreToast and other parallel Ninja builds can otherwise fail with C1041.
-  CONFIG_ARGS+=('-DCMAKE_C_FLAGS_DEBUG=/MDd /Z7 /Ob0 /Od /RTC1'
-                '-DCMAKE_CXX_FLAGS_DEBUG=/MDd /Z7 /Ob0 /Od /RTC1'
-                -DCMAKE_C_COMPILER_LAUNCHER= -DCMAKE_CXX_COMPILER_LAUNCHER=)
+  # CMake 3.25+ provides this without passing slash-prefixed compiler flags
+  # through Git Bash's automatic path conversion. Set the policy before project().
+  CONFIG_ARGS+=(-DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded)
+  # Also keep the launcher out of CMake's try_compile subprocesses.
+  unset CMAKE_C_COMPILER_LAUNCHER CMAKE_CXX_COMPILER_LAUNCHER
 fi
 [ -n "$MSGFMT" ]   && CONFIG_ARGS+=(-DGETTEXT_MSGFMT_EXECUTABLE="$MSGFMT")
 [ -n "$MSGMERGE" ] && CONFIG_ARGS+=(-DGETTEXT_MSGMERGE_EXECUTABLE="$MSGMERGE")
