@@ -9,6 +9,9 @@ inputs:
     description: KF6 release to build
     required: false
     default: '6.32.0'
+  build-type:
+    description: Build configuration (must match the Windows Qt runtime)
+    required: true
   qt-version:
     description: Qt version in use (cache key only)
     required: false
@@ -33,7 +36,7 @@ runs:
       uses: actions/cache@v5.0.4
       with:
         path: ${{ runner.temp }}/kf6-prefix
-        key: kf6-${{ runner.os }}-${{ runner.arch }}-${{ inputs.kf6-version }}-qt${{ inputs.qt-version }}-${{ hashFiles('.github/actions/setup-dependencies/kf6-from-source/build-kf6.sh', '.github/actions/setup-dependencies/kf6-from-source/action.yml', '.github/actions/setup-dependencies/kf6-from-source/patches/*.patch', '.github/actions/setup-dependencies/action.yml') }}
+        key: kf6-${{ runner.os }}-${{ runner.arch }}-${{ inputs.kf6-version }}-qt${{ inputs.qt-version }}-${{ inputs.build-type }}-${{ hashFiles('.github/actions/setup-dependencies/kf6-from-source/build-kf6.sh', '.github/actions/setup-dependencies/kf6-from-source/action.yml', '.github/actions/setup-dependencies/kf6-from-source/patches/*.patch', '.github/actions/setup-dependencies/action.yml') }}
 
     - name: Install platform tools
       if: steps.cache.outputs.cache-hit != 'true'
@@ -77,7 +80,7 @@ runs:
       shell: bash
       run: |
         bash "$GITHUB_WORKSPACE/.github/actions/setup-dependencies/kf6-from-source/build-kf6.sh" \
-          "${{ steps.prefix.outputs.path }}" "${{ inputs.kf6-version }}"
+          "${{ steps.prefix.outputs.path }}" "${{ inputs.kf6-version }}" "${{ inputs.build-type }}"
 
     - name: Export prefix for later steps
       shell: bash

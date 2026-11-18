@@ -85,3 +85,4 @@ runs:
       uses: ./.github/actions/setup-dependencies/kf6-from-source
       with:
         qt-version: ${{ inputs.qt-version }}
+        build-type: ${{ inputs.build-type }}

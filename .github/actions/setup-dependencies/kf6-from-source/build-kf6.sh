@@ -6,6 +6,7 @@ set -euo pipefail
 
 PREFIX="$1"
 KF6_VERSION="${2:-6.32.0}"
+LAUNCHER_BUILD_TYPE="${3:-Release}"
 
 WORK="${RUNNER_TEMP:-/tmp}/kf6-source-build"
 SRC="$WORK/src"
@@ -68,7 +69,11 @@ EXTRA_PREFIX_UNIX="${EXTRA_PREFIX//\\//}"
 GEN_ARGS=(-G Ninja)
 CONFIG_BUILD_TYPE=""
 if [ "$RUNNER_OS" = "Windows" ]; then
-  CONFIG_BUILD_TYPE=Release
+  case "$LAUNCHER_BUILD_TYPE" in
+    Debug) CONFIG_BUILD_TYPE=Debug ;;
+    Release|RelWithDebInfo|MinSizeRel) CONFIG_BUILD_TYPE=Release ;;
+    *) echo "::error::Unsupported build type: $LAUNCHER_BUILD_TYPE"; exit 1 ;;
+  esac
 fi
 
 MSGFMT=""
@@ -84,7 +89,7 @@ if [ "$RUNNER_OS" = "macOS" ] && [ -n "$EXTRA_PREFIX" ]; then
   MSGMERGE="$EXTRA_PREFIX/bin/msgmerge"
 fi
 
-CONFIG_ARGS=(-DCMAKE_INSTALL_PREFIX="$PREFIX" -DBUILD_TESTING=OFF -DWITH_WAYLAND=OFF -DWITH_X11=OFF -DBUILD_PYTHON_BINDINGS=OFF ${CONFIG_BUILD_TYPE:+-DCMAKE_BUILD_TYPE=Release})
+CONFIG_ARGS=(-DCMAKE_INSTALL_PREFIX="$PREFIX" -DBUILD_TESTING=OFF -DWITH_WAYLAND=OFF -DWITH_X11=OFF -DBUILD_PYTHON_BINDINGS=OFF ${CONFIG_BUILD_TYPE:+-DCMAKE_BUILD_TYPE=$CONFIG_BUILD_TYPE})
 [ -n "$MSGFMT" ]   && CONFIG_ARGS+=(-DGETTEXT_MSGFMT_EXECUTABLE="$MSGFMT")
 [ -n "$MSGMERGE" ] && CONFIG_ARGS+=(-DGETTEXT_MSGMERGE_EXECUTABLE="$MSGMERGE")
 if [ "$RUNNER_OS" = "macOS" ]; then
@@ -134,8 +139,8 @@ build_one() { # <dir-name> [extra-cmake-args...]
   cmake -S "$SRC/$name" -B "$BUILD/$name" "${GEN_ARGS[@]}" "${CONFIG_ARGS[@]}" \
     -DCMAKE_PREFIX_PATH="$PREFIX;$QT_PREFIX${EXTRA_PREFIX:+;$EXTRA_PREFIX}" "$@"
   if [ "$RUNNER_OS" = "Windows" ]; then
-    cmake --build "$BUILD/$name" --config Release --parallel
-    cmake --install "$BUILD/$name" --config Release
+    cmake --build "$BUILD/$name" --config "$CONFIG_BUILD_TYPE" --parallel
+    cmake --install "$BUILD/$name" --config "$CONFIG_BUILD_TYPE"
   else
     cmake --build "$BUILD/$name" --parallel
     cmake --install "$BUILD/$name"
@@ -228,7 +233,15 @@ for name in "${ORDER[@]}"; do
   fi
   case "$name" in
     kiconthemes|sonnet) build_one "$name" "${EXTRA_ARGS[@]}" ;;
-    karchive) build_one "$name" -DWITH_BZIP2=OFF -DWITH_LIBLZMA=OFF -DWITH_OPENSSL=OFF -DWITH_LIBZSTD=OFF ;;
+    karchive)
+      ARCHIVE_ARGS=(-DWITH_BZIP2=OFF -DWITH_LIBLZMA=OFF -DWITH_OPENSSL=OFF -DWITH_LIBZSTD=OFF)
+      if [ "$RUNNER_OS" = macOS ]; then
+        # WITH_* only makes these packages optional. Avoid arm64-only Homebrew
+        # OpenSSL and pkg-config zstd when linking a universal library.
+        ARCHIVE_ARGS+=(-DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=ON -DCMAKE_DISABLE_FIND_PACKAGE_PkgConfig=ON)
+      fi
+      build_one "$name" "${ARCHIVE_ARGS[@]}" ;;
+
     *) build_one "$name" ;;
   esac
 done
