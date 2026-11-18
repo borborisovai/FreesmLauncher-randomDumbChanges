@@ -28,7 +28,7 @@ class CatPainter : public QObject {
    public:
     CatPainter(const QString& path, QObject* parent = nullptr);
     virtual ~CatPainter() = default;
-    void paint(QPainter*, const QRect&);
+    void paint(QPainter*, const QRect&, qreal opacityScale = 1.0);
 
    signals:
     void updateFrame();

@@ -41,6 +41,12 @@
 #include <KTextEditor/Editor>
 #include <KTextEditor/MovingRange>
 #include <KTextEditor/View>
+#include <KLocalizedString>
+#include <QAction>
+#include <QMenu>
+#include <QRegularExpression>
+#include <Application.h>
+#include <translations/TranslationsModel.h>
 
 #include <QVBoxLayout>
 #include <QApplication>
@@ -86,7 +92,32 @@ LogView::LogView(QWidget* parent) : QWidget(parent)
     m_view->setConfigValue(QStringLiteral("line-numbers"), true);
     m_view->setConfigValue(QStringLiteral("modification-markers"), false);
     m_view->setConfigValue(QStringLiteral("dynamic-word-wrap"), true);
-    m_view->setConfigValue(QStringLiteral("scrollbar-minimap"), false);
+    // Kate's minimap and mark-aware scrollbar, rather than the narrow default bar.
+    m_view->setConfigValue(QStringLiteral("scrollbar-minimap"), true);
+    m_view->setConfigValue(QStringLiteral("scrollbar-marks"), true);
+    m_view->setContextMenuPolicy(Qt::CustomContextMenu);
+    const QString launcherLanguage = APPLICATION->translations()->selectedLanguage();
+    if (!launcherLanguage.isEmpty()) {
+        KLocalizedString::setLanguages(QStringList{launcherLanguage});
+    }
+    connect(m_view, &QWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
+        QMenu* menu = m_view->contextMenu();
+        if (!menu) return;
+        const QRegularExpression editorSettings(QStringLiteral("mode|indent|tab|encoding|highlight"),
+                                               QRegularExpression::CaseInsensitiveOption);
+        const auto removeEditorSettings = [&editorSettings](QMenu* target, const auto& self) -> void {
+            for (QAction* action : target->actions()) {
+                if (editorSettings.match(action->text() + QLatin1Char(' ') + action->objectName()).hasMatch()) {
+                    target->removeAction(action);
+                } else if (action->menu()) {
+                    self(action->menu(), self);
+                }
+            }
+        };
+        removeEditorSettings(menu, removeEditorSettings);
+        menu->popup(m_view->mapToGlobal(pos));
+    });
+    m_doc->setHighlightingMode(QStringLiteral("Log File (simplified)"));
     m_view->setConfigValue(QStringLiteral("theme"), themeForPalette(QApplication::palette()));
 }
 
@@ -107,8 +138,10 @@ void LogView::setColorLines(bool colorLines)
     if (m_colorLines == colorLines)
         return;
     m_colorLines = colorLines;
-    if (m_model) {
-        repopulate();
+    if (m_doc) {
+        // The syntax definition is the single source of log coloring. This
+        // avoids model-provided per-line overlays fighting syntax highlights.
+        m_doc->setHighlightingMode(colorLines ? QStringLiteral("Log File (simplified)") : QStringLiteral("None"));
     }
 }
 
@@ -336,18 +369,9 @@ QStringList LogView::collectLines(const QModelIndex& parent, int first, int last
         text.replace(QStringLiteral("\n"), QStringLiteral(" "));
         lines.append(text);
 
-        LineColors lineColors;
-        if (m_colorLines) {
-            const auto fg = m_model->data(idx, Qt::ForegroundRole);
-            if (fg.isValid()) {
-                lineColors.foreground = fg.value<QColor>();
-            }
-            const auto bg = m_model->data(idx, Qt::BackgroundRole);
-            if (bg.isValid()) {
-                lineColors.background = bg.value<QColor>();
-            }
-        }
-        colors.append(lineColors);
+        // Color Lines is implemented by the logfile syntax definition; do not
+        // apply model foreground/background roles on top of syntax highlighting.
+        colors.append(LineColors{});
     }
 
     return lines;
