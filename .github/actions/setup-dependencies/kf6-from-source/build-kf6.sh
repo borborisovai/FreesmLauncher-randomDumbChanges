@@ -90,6 +90,13 @@ if [ "$RUNNER_OS" = "macOS" ] && [ -n "$EXTRA_PREFIX" ]; then
 fi
 
 CONFIG_ARGS=(-DCMAKE_INSTALL_PREFIX="$PREFIX" -DBUILD_TESTING=OFF -DWITH_WAYLAND=OFF -DWITH_X11=OFF -DBUILD_PYTHON_BINDINGS=OFF ${CONFIG_BUILD_TYPE:+-DCMAKE_BUILD_TYPE=$CONFIG_BUILD_TYPE})
+if [ "$RUNNER_OS" = Windows ] && [ "$CONFIG_BUILD_TYPE" = Debug ]; then
+  # Embed debug information in object files instead of sharing a compiler PDB.
+  # SnoreToast and other parallel Ninja builds can otherwise fail with C1041.
+  CONFIG_ARGS+=('-DCMAKE_C_FLAGS_DEBUG=/MDd /Z7 /Ob0 /Od /RTC1'
+                '-DCMAKE_CXX_FLAGS_DEBUG=/MDd /Z7 /Ob0 /Od /RTC1'
+                -DCMAKE_C_COMPILER_LAUNCHER= -DCMAKE_CXX_COMPILER_LAUNCHER=)
+fi
 [ -n "$MSGFMT" ]   && CONFIG_ARGS+=(-DGETTEXT_MSGFMT_EXECUTABLE="$MSGFMT")
 [ -n "$MSGMERGE" ] && CONFIG_ARGS+=(-DGETTEXT_MSGMERGE_EXECUTABLE="$MSGMERGE")
 if [ "$RUNNER_OS" = "macOS" ]; then
@@ -166,7 +173,7 @@ fi
 # libcanberra is not available (it never is on Windows).
 if [ "$RUNNER_OS" = "Windows" ]; then
   clone_repo snoretoast 0.9.1
-  build_one snoretoast
+  build_one snoretoast -DBUILD_STATIC_RUNTIME=OFF
 fi
 
 # Frameworks in dependency order.
@@ -216,6 +223,9 @@ for name in "${ORDER[@]}"; do
         git -C "$SRC/$name" apply "$GITHUB_WORKSPACE/.github/actions/setup-dependencies/kf6-from-source/patches/$name-windows-templates.patch"
         ;;
     esac
+  fi
+  if [ "$name" = ki18n ] && [ "$RUNNER_OS" = macOS ]; then
+    git -C "$SRC/ki18n" apply "$GITHUB_WORKSPACE/.github/actions/setup-dependencies/kf6-from-source/patches/ki18n-macos-static-intl.patch"
   fi
   if [ "$name" = solid ] && [ "$RUNNER_OS-$RUNNER_ARCH" = Windows-ARM64 ]; then
     # Solid 6.32 uses the x86-only __cpuid intrinsic for all MSVC targets.
