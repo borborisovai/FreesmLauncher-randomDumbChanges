@@ -100,7 +100,12 @@ runs:
           ARM64) triplet=arm64-windows ;;
           *) echo "::error::Unsupported Windows architecture"; exit 1 ;;
         esac
-        vcpkg_bin="$(cygpath -m "$GITHUB_WORKSPACE/vcpkg_installed/$triplet/bin")"
+        if [ "${{ inputs.build-type }}" = Debug ]; then
+          vcpkg_runtime_subdir=debug/bin
+        else
+          vcpkg_runtime_subdir=bin
+        fi
+        vcpkg_bin="$(cygpath -m "$GITHUB_WORKSPACE/vcpkg_installed/$triplet/$vcpkg_runtime_subdir")"
         echo "$vcpkg_bin" >> "$GITHUB_PATH"
         # CMake's install-time GET_RUNTIME_DEPENDENCIES does not search PATH.
         echo "KF6_BUNDLE_DIRS=${{ steps.prefix.outputs.path }}/bin;$vcpkg_bin" >> "$GITHUB_ENV"
