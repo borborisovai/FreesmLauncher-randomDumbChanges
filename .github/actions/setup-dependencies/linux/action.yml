@@ -22,7 +22,7 @@ runs:
           clang lld llvm \
           ninja-build extra-cmake-modules pkg-config scdoc \
           cmark gamemode-dev libarchive-dev libcmark-dev libqrencode-dev zlib1g-dev \
-          libxcb-cursor-dev libtomlplusplus-dev $KF6_PKGS
+          libxcb-cursor-dev libxcb-res0-dev libtomlplusplus-dev $KF6_PKGS
 
     - name: Setup AppImage tooling
       shell: bash
