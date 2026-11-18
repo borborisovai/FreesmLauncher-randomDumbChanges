@@ -58,7 +58,7 @@ runs:
         esac
 
     - name: Install gettext via vcpkg (Windows)
-      if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'Windows'
+      if: runner.os == 'Windows'
       shell: bash
       run: |
         case "${{ runner.os }}-${{ runner.arch }}" in
@@ -86,3 +86,15 @@ runs:
           echo "CMAKE_PREFIX_PATH=${{ steps.prefix.outputs.path }};${CMAKE_PREFIX_PATH:-}"
           echo "KF6_INSTALL_PREFIX=${{ steps.prefix.outputs.path }}"
         } >> "$GITHUB_ENV"
+
+    - name: Add KF6 runtime libraries to PATH (Windows)
+      if: runner.os == 'Windows'
+      shell: bash
+      run: |
+        echo "${{ steps.prefix.outputs.path }}/bin" >> "$GITHUB_PATH"
+        case "${{ runner.arch }}" in
+          X64) triplet=x64-windows ;;
+          ARM64) triplet=arm64-windows ;;
+          *) echo "::error::Unsupported Windows architecture"; exit 1 ;;
+        esac
+        echo "$GITHUB_WORKSPACE/vcpkg_installed/$triplet/bin" >> "$GITHUB_PATH"
