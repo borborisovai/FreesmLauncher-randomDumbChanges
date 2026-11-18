@@ -122,7 +122,13 @@ jobs:
 
       - name: Configure project
         run: |
-          cmake --preset "$CMAKE_PRESET"
+          if [ "$CMAKE_PRESET" = windows_msvc ]; then
+            # The source-built KF6 prefix contains only the selected runtime.
+            # Do not generate other configurations that could mix Qt runtimes.
+            cmake --preset "$CMAKE_PRESET" -DCMAKE_CONFIGURATION_TYPES="$BUILD_TYPE"
+          else
+            cmake --preset "$CMAKE_PRESET"
+          fi
 
       - name: Run build
         run: |
