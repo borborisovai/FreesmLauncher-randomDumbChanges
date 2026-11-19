@@ -30,8 +30,6 @@
 #include "InstanceList.h"
 #include "InstanceStatusPainter.h"
 
-constexpr int ICON_SIZE = 24;
-constexpr int CELL_HEIGHT = ICON_SIZE + 8;  // 32 px rows
 constexpr int CELL_MARGIN = 4;
 
 InstanceDetailsDelegate::InstanceDetailsDelegate(QObject* parent) : QStyledItemDelegate(parent) {}
@@ -67,9 +65,10 @@ void InstanceDetailsDelegate::paint(QPainter* painter, const QStyleOptionViewIte
     // icon, vertically centered at the left edge
     QRect iconRect = opt.rect;
     iconRect.setX(opt.rect.x() + CELL_MARGIN);
-    iconRect.setWidth(ICON_SIZE);
-    iconRect.setY(opt.rect.y() + (opt.rect.height() - ICON_SIZE) / 2);
-    iconRect.setHeight(ICON_SIZE);
+    const int iconSize = qMax(16, opt.decorationSize.height());
+    iconRect.setWidth(iconSize);
+    iconRect.setY(opt.rect.y() + (opt.rect.height() - iconSize) / 2);
+    iconRect.setHeight(iconSize);
     opt.icon.paint(painter, iconRect, Qt::AlignCenter, mode, state);
 
     // text color
@@ -113,10 +112,11 @@ void InstanceDetailsDelegate::paint(QPainter* painter, const QStyleOptionViewIte
 QSize InstanceDetailsDelegate::sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const
 {
     if (index.column() == InstanceDetailsModel::ColumnName) {
-        return QSize(200, CELL_HEIGHT);
+        const int contentHeight = qMax(option.decorationSize.height(), QFontMetrics(option.font).height());
+        return QSize(200, contentHeight + 8);
     }
     QSize base = QStyledItemDelegate::sizeHint(option, index);
-    base.setHeight(CELL_HEIGHT);
+    base.setHeight(qMax(base.height(), qMax(option.decorationSize.height(), QFontMetrics(option.font).height()) + 8));
     return base;
 }
 

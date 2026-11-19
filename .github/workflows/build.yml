@@ -36,14 +36,12 @@ jobs:
       contents: read
       # Required for Azure Trusted Signing
       id-token: write
-      # Required for vcpkg binary cache
-      packages: write
 
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-24.04
+          - os: ubuntu-latest
             artifact-name: Linux
             cmake-preset: linux
             qt-version: 6.10.2
@@ -81,8 +79,8 @@ jobs:
           - os: macos-26
             artifact-name: macOS
             cmake-preset: macos_universal
-            macosx-deployment-target: 12.0
-            qt-version: 6.9.3
+            macosx-deployment-target: 13.3
+            qt-version: 6.10.2
 
     runs-on: ${{ matrix.os }}
 
@@ -124,19 +122,52 @@ jobs:
 
       - name: Configure project
         run: |
-          cmake --preset "$CMAKE_PRESET"
+          if [ "$CMAKE_PRESET" = windows_msvc ]; then
+            # The source-built KF6 prefix contains only the selected runtime.
+            # Do not generate other configurations that could mix Qt runtimes.
+            # Let the install-time dependency scan package the right vcpkg
+            # runtime DLLs instead of colliding with vcpkg's app-local copies.
+            cmake --preset "$CMAKE_PRESET" \
+              -DCMAKE_CONFIGURATION_TYPES="$BUILD_TYPE" \
+              -DVCPKG_APPLOCAL_DEPS=OFF
+          else
+            cmake --preset "$CMAKE_PRESET"
+          fi
 
       - name: Run build
         run: |
           cmake --build --preset "$CMAKE_PRESET" --config "$BUILD_TYPE"
 
       - name: Run tests
+        id: tests
         run: |
-          ctest --preset "$CMAKE_PRESET" --build-config "$BUILD_TYPE"
+          ctest --preset "$CMAKE_PRESET" --build-config "$BUILD_TYPE" --output-on-failure
 
       ##
       # PACKAGE
       ##
+
+      - name: Show test log on failure
+        if: ${{ failure() && steps.tests.outcome == 'failure' }}
+        shell: bash
+        run: |
+          if [ -f build/Testing/Temporary/LastTest.log ]; then
+            cat build/Testing/Temporary/LastTest.log
+          fi
+
+      - name: Diagnose ARM64 test crashes
+        if: ${{ failure() && steps.tests.outcome == 'failure' && runner.os == 'Linux' && runner.arch == 'ARM64' }}
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y gdb
+          export QT_PLUGIN_PATH="$GITHUB_WORKSPACE/build:${QT_PLUGIN_PATH:-}"
+          cd build/tests
+          for test in Task ResourceFolderModel; do
+            echo "::group::Backtrace for $test"
+            timeout 60s gdb --batch -ex 'set pagination off' -ex run -ex 'thread apply all bt full' --args "$GITHUB_WORKSPACE/build/$BUILD_TYPE/$test" -nocrashhandler || true
+            echo "::endgroup::"
+          done
 
       - name: Get short version
         id: short-version

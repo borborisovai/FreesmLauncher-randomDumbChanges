@@ -86,6 +86,18 @@ runs:
           --dst-dir "$INSTALL_APPIMAGE_DIR" \
           "$INSTALL_APPIMAGE_DIR"/bin/* "$QT_PLUGIN_PATH"/*/*.so
 
+        # lib4bin's Qt hook expects a qt*/plugins tree. Qt installed by aqt
+        # lives under Qt/<version>/<arch>/plugins, so stage the plugins under
+        # sharun's expected layout and give Qt a relocatable path configuration.
+        QT_BUNDLE_DIR="$INSTALL_APPIMAGE_DIR/shared/lib/qt6"
+        mkdir -p "$QT_BUNDLE_DIR/plugins"
+        cp -a "$QT_PLUGIN_PATH"/. "$QT_BUNDLE_DIR/plugins/"
+        cat > "$INSTALL_APPIMAGE_DIR/bin/qt.conf" <<'EOF'
+        [Paths]
+        Prefix=../shared/lib/qt6
+        Plugins=plugins
+        EOF
+
         cp ~/bin/AppImageUpdate.AppImage "$INSTALL_APPIMAGE_DIR"/bin/
         # FIXME(@getchoo): gamemode doesn't seem to be very portable with DBus. Find a way to make it work!
         find "$INSTALL_APPIMAGE_DIR" -name '*gamemode*' -exec rm {} +
@@ -126,6 +138,15 @@ runs:
           --hard-links \
           --dst-dir "$INSTALL_PORTABLE_DIR" \
           "$INSTALL_PORTABLE_DIR"/bin/* "$QT_PLUGIN_PATH"/*/*.so
+
+        QT_BUNDLE_DIR="$INSTALL_PORTABLE_DIR/shared/lib/qt6"
+        mkdir -p "$QT_BUNDLE_DIR/plugins"
+        cp -a "$QT_PLUGIN_PATH"/. "$QT_BUNDLE_DIR/plugins/"
+        cat > "$INSTALL_PORTABLE_DIR/bin/qt.conf" <<'EOF'
+        [Paths]
+        Prefix=../shared/lib/qt6
+        Plugins=plugins
+        EOF
 
         # FIXME(@getchoo): gamemode doesn't seem to be very portable with DBus. Find a way to make it work!
         find "$INSTALL_PORTABLE_DIR" -name '*gamemode*' -exec rm {} +

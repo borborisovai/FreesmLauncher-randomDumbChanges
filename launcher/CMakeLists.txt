@@ -1463,6 +1463,8 @@ target_link_libraries(Launcher_logic
 )
 target_link_libraries(Launcher_logic
     cmark::cmark
+    KF6::TextEditor
+    KF6::I18n
     LocalPeer
     Launcher_rainbow
 )
@@ -1672,6 +1674,11 @@ endif()
 
 #### The bundle mess! ####
 # Bundle utilities are used to complete packages for different platforms - they add all the libraries that would otherwise be missing on the target system.
+# On Windows, include the source-built KF6 and manifest vcpkg runtime directories;
+# install-time GET_RUNTIME_DEPENDENCIES does not search PATH automatically.
+if(WIN32 AND DEFINED ENV{KF6_BUNDLE_DIRS})
+    set(KF6_BUNDLE_DIRS "$ENV{KF6_BUNDLE_DIRS}")
+endif()
 # NOTE: it seems that this absolutely has to be here, and nowhere else.
 if(WIN32 OR (UNIX AND APPLE))
     if(WIN32)
@@ -1703,6 +1710,7 @@ if(WIN32 OR (UNIX AND APPLE))
             ${CMAKE_SYSTEM_LIBRARY_PATH}
             ${QT_LIBS_DIR}
             ${QT_LIBEXECS_DIR}
+            ${KF6_BUNDLE_DIRS}
         PRE_EXCLUDE_REGEXES
             "^(api-ms-win|ext-ms)-.*\\.dll$"
             # FIXME: Why aren't these caught by the below regex???

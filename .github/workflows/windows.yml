@@ -89,6 +89,7 @@ jobs:
             qt6-5compat:p
             qt6-networkauth:p
             cmark:p
+            ktexteditor:p
 
       - name: Force newer ccache
         if: matrix.msystem == ''

@@ -245,6 +245,6 @@ class ResourceFolderModelTest : public QObject {
     }
 };
 
-QTEST_GUILESS_MAIN(ResourceFolderModelTest)
+QTEST_MAIN(ResourceFolderModelTest)
 
 #include "ResourceFolderModel_test.moc"
