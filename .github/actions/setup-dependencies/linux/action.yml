@@ -15,7 +15,7 @@ runs:
         # the kf6-from-source action).
         KF6_PKGS=""
         if [ "$(uname -m)" != "aarch64" ]; then
-          KF6_PKGS="libkf6texteditor-dev"
+          KF6_PKGS="libkf6texteditor-dev libkf6i18n-dev"
         fi
         sudo apt-get -y install \
           dpkg-dev \

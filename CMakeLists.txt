@@ -352,12 +352,14 @@ find_package(ZLIB REQUIRED)
 # Find KTextEditor (Kate's editor component, used to render the log views).
 # This is a hard dependency; there is no fallback implementation.
 find_package(KF6TextEditor 6.0 QUIET)
-if(NOT TARGET KF6::TextEditor)
+find_package(KF6I18n 6.0 QUIET)
+if(NOT TARGET KF6::TextEditor OR NOT TARGET KF6::I18n)
     message(FATAL_ERROR
-        "KF6 KTextEditor was not found. Freesm Launcher builds its log views on the "
-        "KTextEditor component of Kate. Install the development package, e.g. "
-        "'libkf6texteditor-dev' (Debian/Ubuntu), 'pacboy ktexteditor:p' (MSYS2) or "
-        "'kdePackages.ktexteditor' (Nix). Alternatively point KF6_INSTALL_PREFIX at a "
+        "KF6 KTextEditor and KI18n were not found. Freesm Launcher builds its log views on "
+        "KTextEditor and uses KI18n to follow the launcher language. Install their development packages, e.g. "
+        "'libkf6texteditor-dev' and 'libkf6i18n-dev' (Debian/Ubuntu), "
+        "'pacboy ktexteditor:p ki18n:p' (MSYS2) or 'kdePackages.ktexteditor' and "
+        "'kdePackages.ki18n' (Nix). Alternatively point KF6_INSTALL_PREFIX at a "
         "prefix with a source-built KF6 (the setup-dependencies/kf6-from-source CI "
         "action does exactly that).")
 endif()

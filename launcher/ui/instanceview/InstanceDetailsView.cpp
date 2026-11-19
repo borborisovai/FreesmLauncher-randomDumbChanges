@@ -79,7 +79,7 @@ void InstanceDetailsView::setModel(QAbstractItemModel* model)
             action->setChecked(!isColumnHidden(logical));
             connect(action, &QAction::toggled, this, [this, logical](bool visible) {
                 setColumnHidden(logical, !visible);
-                APPLICATION->settings()->set("InstDetailsHeaderState", header()->saveState());
+                APPLICATION->settings()->set("InstDetailsHeaderState", this->header()->saveState());
             });
         }
         menu.exec(header->mapToGlobal(pos));
