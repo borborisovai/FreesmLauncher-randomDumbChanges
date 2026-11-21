@@ -69,3 +69,8 @@ ecm_add_test(ConfigMigration_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSI
 
 ecm_add_test(PNGUtils_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSION_MAJOR}::Test
     TEST_NAME PNGUtils)
+ecm_add_test(LogView_test.cpp LINK_LIBRARIES Launcher_logic KF6::TextEditor Qt${QT_VERSION_MAJOR}::Test
+    TEST_NAME LogView)
+# KF6 can initialize its color scheme on the event loop. These tests need a
+# QApplication (not QCoreApplication) even though they do not show windows.
+set_tests_properties(Task ResourceFolderModel LogView PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

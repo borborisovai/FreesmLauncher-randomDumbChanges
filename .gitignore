@@ -62,3 +62,6 @@ flatbuild
 
 # Snap
 *.snap
+
+# Python bytecode from scripts/
+__pycache__/

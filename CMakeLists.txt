@@ -5,6 +5,12 @@ if(APPLE)
     enable_language(OBJC OBJCXX)
 endif()
 
+# KDE Frameworks built from source (macOS, Windows MSVC, Linux aarch64) install
+# into a private prefix; search it even if CMAKE_PREFIX_PATH does not cover it.
+if(DEFINED ENV{KF6_INSTALL_PREFIX})
+    list(PREPEND CMAKE_SYSTEM_PREFIX_PATH "$ENV{KF6_INSTALL_PREFIX}")
+endif()
+
 string(COMPARE EQUAL "${CMAKE_SOURCE_DIR}" "${CMAKE_BUILD_DIR}" IS_IN_SOURCE_BUILD)
 if(IS_IN_SOURCE_BUILD)
     message(FATAL_ERROR "You are building the Launcher in-source. Please separate the build tree from the source tree.")
@@ -342,6 +348,39 @@ if(NOT tomlplusplus_FOUND)
 endif()
 
 find_package(ZLIB REQUIRED)
+
+# Find KTextEditor (Kate's editor component, used to render the log views).
+# This is a hard dependency; there is no fallback implementation.
+find_package(KF6TextEditor 6.0 QUIET)
+find_package(KF6I18n 6.0 QUIET)
+if(NOT TARGET KF6::TextEditor OR NOT TARGET KF6::I18n)
+    message(FATAL_ERROR
+        "KF6 KTextEditor and KI18n were not found. Freesm Launcher builds its log views on "
+        "KTextEditor and uses KI18n to follow the launcher language. Install their development packages, e.g. "
+        "'libkf6texteditor-dev' and 'libkf6i18n-dev' (Debian/Ubuntu), "
+        "'pacboy ktexteditor:p ki18n:p' (MSYS2) or 'kdePackages.ktexteditor' and "
+        "'kdePackages.ki18n' (Nix). Alternatively point KF6_INSTALL_PREFIX at a "
+        "prefix with a source-built KF6 (the setup-dependencies/kf6-from-source CI "
+        "action does exactly that).")
+endif()
+
+# Derive the KF6 install prefix from the config file location, so the dependency
+# bundling step can find the built libraries.
+set(KF6_BUNDLE_DIRS "")
+if(KF6TextEditor_DIR)
+    get_filename_component(_kf6_cmake "${KF6TextEditor_DIR}" PATH)   # <prefix>/lib/cmake/KF6TextEditor -> <prefix>/lib/cmake
+    get_filename_component(_kf6_lib "${_kf6_cmake}" PATH)            # -> <prefix>/lib
+    get_filename_component(_kf6_prefix "${_kf6_lib}" PATH)           # -> <prefix>
+    foreach(_dir "${_kf6_prefix}/bin" "${_kf6_prefix}/lib" "${_kf6_prefix}/lib64" "${_kf6_prefix}/Frameworks")
+        if(EXISTS "${_dir}")
+            list(APPEND KF6_BUNDLE_DIRS "${_dir}")
+        endif()
+    endforeach()
+    unset(_kf6_cmake)
+    unset(_kf6_lib)
+    unset(_kf6_prefix)
+    unset(_dir)
+endif()
 
 
 include(ECMQtDeclareLoggingCategory)

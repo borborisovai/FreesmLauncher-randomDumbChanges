@@ -19,6 +19,8 @@ permissions: { }
 jobs:
   blocked_status:
     name: Check Blocked Status
+    # Forks without a configured GitHub App cannot run this automation.
+    if: ${{ vars.PULL_REQUEST_APP_ID != '' }}
     runs-on: ubuntu-slim
 
     steps:

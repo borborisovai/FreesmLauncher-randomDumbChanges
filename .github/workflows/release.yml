@@ -15,8 +15,6 @@ jobs:
       contents: read
       # Required for Azure Trusted Signing
       id-token: write
-      # Required for vcpkg binary cache
-      packages: write
     with:
       build-type: Release
       environment: Release
@@ -100,7 +98,8 @@ jobs:
           tag_name: ${{ github.ref }}
           name: Freesm Launcher ${{ env.VERSION }}
           draft: true
-          prerelease: false
+          # Beta tags create a draft marked as a prerelease, never a stable release.
+          prerelease: ${{ contains(github.ref_name, '-beta') }}
           fail_on_unmatched_files: true
           files: |
             FreesmLauncher-Linux-x86_64.AppImage

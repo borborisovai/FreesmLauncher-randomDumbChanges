@@ -32,7 +32,14 @@ jobs:
         with:
           name: freesmlauncher
           authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
-      - run: nix build | cachix push freesmlauncher
+      - name: Build with full diagnostics
+        run: nix build -L
+      - name: Publish to upstream Cachix
+        if: ${{ github.repository == 'FreesmTeam/FreesmLauncher' && github.event_name == 'push' }}
+        shell: bash
+        run: |
+          set -o pipefail
+          nix path-info .#default | cachix push freesmlauncher
       - run: |
-          nix develop
+          nix develop --command true
           echo "OK"
