@@ -38,7 +38,7 @@ CatPainter::CatPainter(const QString& path, QObject* parent) : QObject(parent)
     }
 }
 
-void CatPainter::paint(QPainter* painter, const QRect& viewport)
+void CatPainter::paint(QPainter* painter, const QRect& viewport, qreal opacityScale)
 {
     QPixmap frame = m_image;
     if (m_movie && m_movie->isValid()) {
@@ -46,7 +46,7 @@ void CatPainter::paint(QPainter* painter, const QRect& viewport)
     }
 
     auto fit = APPLICATION->settings()->get("CatFit").toString();
-    painter->setOpacity(APPLICATION->settings()->get("CatOpacity").toFloat() / 100);
+    painter->setOpacity(APPLICATION->settings()->get("CatOpacity").toFloat() / 100 * opacityScale);
     int widWidth = viewport.width();
     int widHeight = viewport.height();
     auto aspectMode = Qt::IgnoreAspectRatio;

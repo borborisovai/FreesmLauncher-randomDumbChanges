@@ -58,6 +58,8 @@
 #include <QFileDialog>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QFont>
+#include <QSize>
 #include <QInputDialog>
 #include <QItemSelectionModel>
 #include <QKeyEvent>
@@ -373,10 +375,22 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent), ui(new Ui::MainWi
 
         detailsProxyModel = new InstanceDetailsModel(this);
         detailsProxyModel->setSourceModel(APPLICATION->instances());
-        detailsProxyModel->sort(InstanceDetailsModel::ColumnName, Qt::AscendingOrder);
+        detailsProxyModel->sort(InstanceDetailsModel::ColumnGroup, Qt::AscendingOrder);
         connect(detailsProxyModel, &InstanceDetailsModel::dataChanged, this, &MainWindow::instanceDataChanged);
 
         detailsView->setModel(detailsProxyModel);
+        if (!detailsView->header()->restoreState(APPLICATION->settings()->get("InstDetailsHeaderState").toByteArray())) {
+            detailsView->header()->setSortIndicator(InstanceDetailsModel::ColumnGroup, Qt::AscendingOrder);
+        }
+        connect(detailsView->header(), &QHeaderView::sectionMoved, this, [this] {
+            APPLICATION->settings()->set("InstDetailsHeaderState", detailsView->header()->saveState());
+        });
+        connect(detailsView->header(), &QHeaderView::sectionResized, this, [this] {
+            APPLICATION->settings()->set("InstDetailsHeaderState", detailsView->header()->saveState());
+        });
+        connect(detailsView, &InstanceDetailsView::zoomRequested, this, [this](int delta) {
+            setInstanceIconZoomLevel(m_instIconZoomLevel + delta);
+        });
 
         detailsView->installEventFilter(this);
         connect(detailsView, &InstanceDetailsView::activated, this, &MainWindow::instanceActivated);
@@ -998,10 +1012,13 @@ void MainWindow::onCatToggled(bool state)
 
 void MainWindow::setCatBackground(bool enabled)
 {
-    // the cat (and snow) is painted into the grid view only
+    // keep the active cat pack visible in both the icon grid and details table
     if (view) {
         view->setPaintCat(enabled);
         view->viewport()->repaint();
+    }
+    if (detailsView) {
+        detailsView->setPaintCat(enabled);
     }
 }
 
@@ -1563,6 +1580,14 @@ void MainWindow::setInstanceIconZoomLevel(int level, bool save)
     }
     if (view) {
         view->setIconZoomLevel(m_instIconZoomLevel);
+    }
+    if (detailsView) {
+        const qreal scale = static_cast<qreal>(iconSize) / 48.0;
+        QFont detailsFont = font();
+        detailsFont.setPointSizeF(qMax(6.0, font().pointSizeF() * scale));
+        detailsView->setFont(detailsFont);
+        detailsView->setIconSize(QSize(qMax(16, iconSize / 2), qMax(16, iconSize / 2)));
+        detailsView->setMinimumHeight(0);
     }
     if (m_zoomSlider) {
         m_zoomSlider->setZoomLevel(m_instIconZoomLevel);

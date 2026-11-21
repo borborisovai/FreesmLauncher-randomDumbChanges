@@ -22,10 +22,16 @@
 #include <InstanceList.h>
 #include <MMCTime.h>
 #include "BaseInstance.h"
+#include "minecraft/MinecraftInstance.h"
+#include "minecraft/Component.h"
+#include "minecraft/PackProfile.h"
 #include "InstanceView.h"
+
+#include <icons/IconList.h>
 
 #include <QDateTime>
 #include <QLocale>
+#include <QStringList>
 
 InstanceDetailsModel::InstanceDetailsModel(QObject* parent) : InstanceProxyModel(parent) {}
 
@@ -65,6 +71,30 @@ static QString columnText(int column, BaseInstance* instance)
         case InstanceDetailsModel::ColumnVersion: {
             const QString version = instance->getVersionString();
             return version.isEmpty() ? QStringLiteral("—") : version;
+        }
+        case InstanceDetailsModel::ColumnLoader: {
+            auto* minecraft = dynamic_cast<MinecraftInstance*>(instance);
+            if (!minecraft) {
+                return InstanceDetailsModel::tr("—");
+            }
+            QStringList loaders;
+            const auto* profile = minecraft->getPackProfile();
+            if (!profile) {
+                return InstanceDetailsModel::tr("Vanilla");
+            }
+            for (auto it = Component::KNOWN_MODLOADERS.cbegin(); it != Component::KNOWN_MODLOADERS.cend(); ++it) {
+                const QString version = profile->getComponentVersion(it.key());
+                if (!version.isEmpty()) {
+                    QString name;
+                    if (it.key() == QStringLiteral("net.neoforged")) name = QStringLiteral("NeoForge");
+                    else if (it.key() == QStringLiteral("net.minecraftforge")) name = QStringLiteral("Forge");
+                    else if (it.key() == QStringLiteral("net.fabricmc.fabric-loader")) name = QStringLiteral("Fabric");
+                    else if (it.key() == QStringLiteral("org.quiltmc.quilt-loader")) name = QStringLiteral("Quilt");
+                    else name = QStringLiteral("LiteLoader");
+                    loaders.append(QStringLiteral("%1 %2").arg(name, version));
+                }
+            }
+            return loaders.isEmpty() ? InstanceDetailsModel::tr("Vanilla") : loaders.join(QStringLiteral(", "));
         }
         case InstanceDetailsModel::ColumnGroup: {
             const QString group = APPLICATION->instances()->getInstanceGroup(instance->id());
@@ -145,6 +175,8 @@ QVariant InstanceDetailsModel::headerData(int section, Qt::Orientation orientati
                 return tr("Name");
             case ColumnVersion:
                 return tr("Version");
+            case ColumnLoader:
+                return tr("Loader");
             case ColumnGroup:
                 return tr("Group");
             case ColumnLastLaunched:
@@ -196,6 +228,8 @@ bool InstanceDetailsModel::lessThan(const QModelIndex& left, const QModelIndex& 
         case ColumnVersion:
             // natural sort so that, e.g., 1.9 comes before 1.10
             return m_naturalSort.compare(a->getVersionString(), b->getVersionString()) < 0;
+        case ColumnLoader:
+            return m_naturalSort.compare(columnText(ColumnLoader, a), columnText(ColumnLoader, b)) < 0;
         case ColumnGroup: {
             const int result = APPLICATION->instances()->getInstanceGroup(a->id()).localeAwareCompare(APPLICATION->instances()->getInstanceGroup(b->id()));
             if (result != 0) {

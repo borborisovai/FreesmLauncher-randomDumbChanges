@@ -32,6 +32,7 @@ class InstanceDetailsModel : public InstanceProxyModel {
     enum Column {
         ColumnName = 0,
         ColumnVersion,
+        ColumnLoader,
         ColumnGroup,
         ColumnLastLaunched,
         ColumnPlaytime,

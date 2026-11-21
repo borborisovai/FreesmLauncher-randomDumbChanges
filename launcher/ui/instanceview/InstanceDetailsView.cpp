@@ -25,6 +25,11 @@
 #include <QHeaderView>
 #include <QMimeData>
 #include <QUrl>
+#include <QWheelEvent>
+#include <QMenu>
+#include <QPainter>
+#include "ui/themes/CatPainter.h"
+#include "ui/themes/ThemeManager.h"
 
 #include <Application.h>
 #include "InstanceDetailsModel.h"
@@ -52,6 +57,10 @@ InstanceDetailsView::InstanceDetailsView(QWidget* parent) : QTreeView(parent)
     setDragDropMode(QAbstractItemView::DragDrop);
     setDefaultDropAction(Qt::MoveAction);
     viewport()->setAcceptDrops(true);
+    viewport()->setAttribute(Qt::WA_TranslucentBackground);
+    viewport()->setAutoFillBackground(false);
+    viewport()->setStyleSheet(QStringLiteral("background: transparent;"));
+    setPaintCat(APPLICATION->settings()->get("TheCat").toBool());
 }
 
 void InstanceDetailsView::setModel(QAbstractItemModel* model)
@@ -60,16 +69,32 @@ void InstanceDetailsView::setModel(QAbstractItemModel* model)
 
     auto header = this->header();
     header->setStretchLastSection(false);
-    header->setSectionsMovable(false);
+    header->setSectionsMovable(true);
+    header->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(header, &QWidget::customContextMenuRequested, this, [this, header](const QPoint& pos) {
+        QMenu menu(this);
+        for (int logical = 0; logical < this->model()->columnCount(); ++logical) {
+            auto* action = menu.addAction(this->model()->headerData(logical, Qt::Horizontal).toString());
+            action->setCheckable(true);
+            action->setChecked(!isColumnHidden(logical));
+            connect(action, &QAction::toggled, this, [this, logical](bool visible) {
+                setColumnHidden(logical, !visible);
+                APPLICATION->settings()->set("InstDetailsHeaderState", this->header()->saveState());
+            });
+        }
+        menu.exec(header->mapToGlobal(pos));
+    });
     header->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     if (header->count() >= InstanceDetailsModel::ColumnCount) {
         header->setSectionResizeMode(InstanceDetailsModel::ColumnName, QHeaderView::Stretch);
         header->setSectionResizeMode(InstanceDetailsModel::ColumnVersion, QHeaderView::Interactive);
+        header->setSectionResizeMode(InstanceDetailsModel::ColumnLoader, QHeaderView::Interactive);
         header->setSectionResizeMode(InstanceDetailsModel::ColumnGroup, QHeaderView::Interactive);
         header->setSectionResizeMode(InstanceDetailsModel::ColumnLastLaunched, QHeaderView::Interactive);
         header->setSectionResizeMode(InstanceDetailsModel::ColumnPlaytime, QHeaderView::Interactive);
         header->setMinimumSectionSize(60);
         setColumnWidth(InstanceDetailsModel::ColumnVersion, 100);
+        setColumnWidth(InstanceDetailsModel::ColumnLoader, 130);
         setColumnWidth(InstanceDetailsModel::ColumnGroup, 120);
         setColumnWidth(InstanceDetailsModel::ColumnLastLaunched, 170);
         setColumnWidth(InstanceDetailsModel::ColumnPlaytime, 110);
@@ -169,4 +194,40 @@ void InstanceDetailsView::startDrag(Qt::DropActions supportedActions)
     auto* drag = new QDrag(this);
     drag->setMimeData(mimeData);
     drag->exec(supportedActions, Qt::MoveAction);
+}
+
+void InstanceDetailsView::wheelEvent(QWheelEvent* event)
+{
+    if (event->modifiers() & Qt::ControlModifier) {
+        int delta = event->angleDelta().y();
+        if (delta == 0) {
+            delta = event->pixelDelta().y();
+        }
+        if (delta != 0) {
+            emit zoomRequested(delta > 0 ? 1 : -1);
+            event->accept();
+            return;
+        }
+    }
+    QTreeView::wheelEvent(event);
+}
+
+void InstanceDetailsView::setPaintCat(bool enabled)
+{
+    delete m_cat;
+    m_cat = enabled ? new CatPainter(APPLICATION->themeManager()->getCatPack(), this) : nullptr;
+    if (m_cat) {
+        connect(m_cat, &CatPainter::updateFrame, viewport(), qOverload<>(&QWidget::update));
+    }
+    viewport()->update();
+}
+
+void InstanceDetailsView::paintEvent(QPaintEvent* event)
+{
+    QTreeView::paintEvent(event);
+    if (m_cat) {
+        // Keep the selected cat pack visible without obscuring instance names.
+        QPainter painter(viewport());
+        m_cat->paint(&painter, viewport()->rect(), 0.12);
+    }
 }

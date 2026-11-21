@@ -26,6 +26,8 @@
 
 #include <QTreeView>
 
+class CatPainter;
+
 class InstanceDetailsView : public QTreeView {
     Q_OBJECT
 
@@ -33,13 +35,20 @@ class InstanceDetailsView : public QTreeView {
     explicit InstanceDetailsView(QWidget* parent = nullptr);
 
     void setModel(QAbstractItemModel* model) override;
+    void setPaintCat(bool enabled);
 
    signals:
     void droppedURLs(QList<QUrl> urls);
+    void zoomRequested(int delta);
 
    protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dragMoveEvent(QDragMoveEvent* event) override;
     void dropEvent(QDropEvent* event) override;
     void startDrag(Qt::DropActions supportedActions) override;
+    void wheelEvent(QWheelEvent* event) override;
+    void paintEvent(QPaintEvent* event) override;
+
+   private:
+    CatPainter* m_cat = nullptr;
 };
