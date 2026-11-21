@@ -229,10 +229,10 @@ VersionPage::VersionPage(MinecraftInstance* inst, QWidget* parent) : QMainWindow
 
     // view mode switcher, modeled after Dolphin's view_mode action; the mode is
     // persisted globally in the ComponentListViewMode setting
-    m_actionListViewIcons = new QAction(QIcon::fromTheme(QStringLiteral("view-list-icons")), tr("Icons"), this);
+    m_actionListViewIcons = new QAction(tr("Icons"), this);
     m_actionListViewIcons->setCheckable(true);
     m_actionListViewIcons->setToolTip(tr("Show items as a grid of icons"));
-    m_actionListViewDetails = new QAction(QIcon::fromTheme(QStringLiteral("view-list-tree")), tr("Details"), this);
+    m_actionListViewDetails = new QAction(tr("Details"), this);
     m_actionListViewDetails->setCheckable(true);
     m_actionListViewDetails->setToolTip(tr("Show items as a table"));
     auto* viewModeGroup = new QActionGroup(this);
@@ -244,12 +244,14 @@ VersionPage::VersionPage(MinecraftInstance* inst, QWidget* parent) : QMainWindow
     auto* viewModeMenu = new QMenu(this);
     viewModeMenu->addAction(m_actionListViewIcons);
     viewModeMenu->addAction(m_actionListViewDetails);
-    m_viewModeAction = new QAction(QIcon::fromTheme(QStringLiteral("view-list-tree")), tr("View Mode"), this);
+    m_viewModeAction = new QAction(tr("View Mode"), this);
     m_viewModeAction->setMenu(viewModeMenu);
     m_viewModeAction->setToolTip(tr("Change view mode"));
     ui->toolBar->insertActionBefore(ui->actionChange_version, m_viewModeAction);
     if (auto* button = qobject_cast<QToolButton*>(ui->toolBar->widgetForAction(m_viewModeAction))) {
         button->setPopupMode(QToolButton::InstantPopup);
+        button->setToolButtonStyle(Qt::ToolButtonTextOnly);
+        button->setStyleSheet(QStringLiteral("QToolButton { text-align: center; }"));
     }
 
     // zoom actions, modeled after Dolphin's zoom_in/zoom_out actions;
@@ -261,8 +263,16 @@ VersionPage::VersionPage(MinecraftInstance* inst, QWidget* parent) : QMainWindow
     connect(m_actionZoomIn, &QAction::triggered, this, [this] { setZoomLevel(m_zoomLevel + 1); });
     connect(m_actionZoomOut, &QAction::triggered, this, [this] { setZoomLevel(m_zoomLevel - 1); });
     connect(m_actionZoomReset, &QAction::triggered, this, [this] { setZoomLevel(4); });
+    m_actionZoomOut->setIcon(QIcon());
+    m_actionZoomIn->setIcon(QIcon());
     ui->toolBar->insertActionBefore(m_viewModeAction, m_actionZoomOut);
     ui->toolBar->insertActionBefore(m_viewModeAction, m_actionZoomIn);
+    for (QAction* action : {m_actionZoomOut, m_actionZoomIn}) {
+        if (auto* button = qobject_cast<QToolButton*>(ui->toolBar->widgetForAction(action))) {
+            button->setToolButtonStyle(Qt::ToolButtonTextOnly);
+            button->setStyleSheet(QStringLiteral("QToolButton { text-align: center; }"));
+        }
+    }
     this->addAction(m_actionZoomReset);  // widget-level, shortcut-only action (no toolbar button)
 
     auto* zoomSlider = new ZoomStatusSlider(this);
@@ -726,8 +736,7 @@ void VersionPage::setViewMode(InstanceViewMode mode)
         m_actionListViewDetails->setChecked(mode == InstanceViewMode::Details);
     }
     if (m_viewModeAction) {
-        m_viewModeAction->setIcon(QIcon::fromTheme(mode == InstanceViewMode::Icons ? QStringLiteral("view-list-icons")
-                                                                                   : QStringLiteral("view-list-tree")));
+        m_viewModeAction->setIcon(QIcon());
     }
     if (auto* view = currentView()) {
         view->setFocus();
