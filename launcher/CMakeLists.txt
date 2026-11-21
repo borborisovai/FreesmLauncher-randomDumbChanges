@@ -1674,6 +1674,11 @@ endif()
 
 #### The bundle mess! ####
 # Bundle utilities are used to complete packages for different platforms - they add all the libraries that would otherwise be missing on the target system.
+# On Windows, include the source-built KF6 and manifest vcpkg runtime directories;
+# install-time GET_RUNTIME_DEPENDENCIES does not search PATH automatically.
+if(WIN32 AND DEFINED ENV{KF6_BUNDLE_DIRS})
+    set(KF6_BUNDLE_DIRS "$ENV{KF6_BUNDLE_DIRS}")
+endif()
 # NOTE: it seems that this absolutely has to be here, and nowhere else.
 if(WIN32 OR (UNIX AND APPLE))
     if(WIN32)

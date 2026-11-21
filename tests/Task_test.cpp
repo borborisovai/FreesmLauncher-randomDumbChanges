@@ -261,6 +261,6 @@ class TaskTest : public QObject {
     }
 };
 
-QTEST_GUILESS_MAIN(TaskTest)
+QTEST_MAIN(TaskTest)
 
 #include "Task_test.moc"

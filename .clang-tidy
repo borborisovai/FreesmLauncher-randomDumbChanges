@@ -18,7 +18,6 @@ Checks:
 
 CheckOptions:
   misc-include-cleaner.MissingIncludes: false
-  readability-identifier-naming.DefaultCase: "camelBack"
   readability-identifier-naming.NamespaceCase: "CamelCase"
   readability-identifier-naming.ClassCase: "CamelCase"
   readability-identifier-naming.ClassConstantCase: "CamelCase"
