@@ -155,6 +155,21 @@ jobs:
             cat build/Testing/Temporary/LastTest.log
           fi
 
+      - name: Diagnose missing test DLLs (Windows)
+        if: ${{ failure() && steps.tests.outcome == 'failure' && runner.os == 'Windows' }}
+        shell: bash
+        run: |
+          for exe in build/Debug/*.exe build/tests/Debug/*.exe; do
+            [ -f "$exe" ] || continue
+            echo "== $(basename "$exe")"
+            dumpbin //nologo //dependents "$(cygpath -w "$exe")" | tr -d '\r' | grep -iE '\.dll$' | while read -r line; do
+              dll="$(echo "$line" | sed 's/^[[:space:]]*//')"
+              if ! cmd //c "where $dll" >/dev/null 2>&1 && [ ! -f "build/Debug/$dll" ] && [ ! -f "build/tests/$dll" ]; then
+                echo "  MISSING: $dll"
+              fi
+            done
+          done
+
       - name: Diagnose ARM64 test crashes
         if: ${{ failure() && steps.tests.outcome == 'failure' && runner.os == 'Linux' && runner.arch == 'ARM64' }}
         shell: bash
