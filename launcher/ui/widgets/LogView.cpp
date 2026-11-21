@@ -96,9 +96,17 @@ LogView::LogView(QWidget* parent) : QWidget(parent)
     m_view->setConfigValue(QStringLiteral("scrollbar-minimap"), true);
     m_view->setConfigValue(QStringLiteral("scrollbar-marks"), true);
     m_view->setContextMenuPolicy(Qt::CustomContextMenu);
-    const QString launcherLanguage = APPLICATION->translations()->selectedLanguage();
-    if (!launcherLanguage.isEmpty()) {
-        KLocalizedString::setLanguages(QStringList{launcherLanguage});
+    // The language selected in launcher settings drives KLocalizedString. The
+    // APPLICATION macro casts the running QCoreApplication to Application; a
+    // plain QApplication (tests, embedders) must not be cast that way - it
+    // would read foreign memory and crash. Look the app up defensively.
+    if (auto* app = qobject_cast<Application*>(QCoreApplication::instance())) {
+        if (auto* translations = app->translations()) {
+            const QString launcherLanguage = translations->selectedLanguage();
+            if (!launcherLanguage.isEmpty()) {
+                KLocalizedString::setLanguages(QStringList{launcherLanguage});
+            }
+        }
     }
     connect(m_view, &QWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
         QMenu* menu = m_view->contextMenu();

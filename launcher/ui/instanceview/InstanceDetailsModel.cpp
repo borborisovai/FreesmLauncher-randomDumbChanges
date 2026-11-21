@@ -24,6 +24,8 @@
 #include "BaseInstance.h"
 #include "InstanceView.h"
 
+#include <icons/IconList.h>
+
 #include <QDateTime>
 #include <QLocale>
 
