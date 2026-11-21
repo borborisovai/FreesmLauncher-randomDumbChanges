@@ -77,5 +77,11 @@ runs:
       with:
         aqtversion: "==3.1.*"
         version: ${{ inputs.qt-version }}
-        modules: qtimageformats qtnetworkauth
+        modules: qtimageformats qtnetworkauth qtspeech
         cache: ${{ inputs.build-type == 'Debug' }}
+
+    - name: Install KF6 from source
+      if: ${{ runner.os == 'macOS' || (runner.os == 'Windows' && inputs.msystem == '') || (runner.os == 'Linux' && runner.arch == 'ARM64') }}
+      uses: ./.github/actions/setup-dependencies/kf6-from-source
+      with:
+        qt-version: ${{ inputs.qt-version }}
