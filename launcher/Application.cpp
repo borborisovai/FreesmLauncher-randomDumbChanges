@@ -92,6 +92,7 @@
 #include <mutex>
 
 #include <QAccessible>
+#include <QByteArray>
 #include <QCommandLineParser>
 #include <QDate>
 #include <QDebug>
@@ -871,6 +872,7 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
         m_settings->registerSetting("ScreenshotListViewMode", "Icons");
         m_settings->registerSetting("ComponentListViewMode", "Details");
         m_settings->registerSetting("InstIconZoomLevel", 3);
+        m_settings->registerSetting("InstDetailsHeaderState", QByteArray());
         m_settings->registerSetting("ResourceIconZoomLevel", 4);
         m_settings->registerSetting("WorldsIconZoomLevel", 4);
         m_settings->registerSetting("ServersIconZoomLevel", 4);
