@@ -23,14 +23,14 @@ jobs:
       fail-fast: true
       matrix:
         include:
-          - os: ubuntu-22.04
+          - os: ubuntu-latest
             qt_ver: 5
             qt_host: linux
             qt_arch: ""
             qt_version: "5.15.2"
             qt_modules: "qtnetworkauth"
 
-          - os: ubuntu-22.04
+          - os: ubuntu-latest
             qt_ver: 6
             qt_host: linux
             qt_arch: ""
